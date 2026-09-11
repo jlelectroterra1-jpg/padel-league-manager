@@ -38,7 +38,7 @@ create table fixtures (
   team2_id uuid references teams(id),
   stage text not null default 'league' check (stage in ('league','QF','SF','F')),
   bracket_slot text,
-  next_fixture_id uuid references fixtures(id),
+  next_fixture_id uuid references fixtures(id) on delete set null,
   next_slot int check (next_slot in (1,2)),
   status text not null default 'scheduled' check (status in ('scheduled','completed','bye')),
   created_at timestamptz not null default now()

@@ -92,6 +92,11 @@
     const next = window.Fixtures.nextFixtureForTeam(team.id, fixtures, results);
     const nextOpp = next ? (next.team1_id === team.id ? next.team2_id : next.team1_id) : null;
 
+    if (league && (league.status === "completed" || league.status === "archived")) {
+      const champion = championCard(fixtures, results, teamsById);
+      if (champion) app.appendChild(champion);
+    }
+
     app.appendChild(
       el("div", { class: "card team-hero" }, [
         el("div", { class: "muted small" }, league ? league.name : ""),
@@ -120,6 +125,7 @@
       results.filter((r) => r.confirmation_status === "confirmed" && !r.superseded).map((r) => r.fixture_id)
     );
     const myFixtures = fixtures.filter((f) => f.stage === "league" && (f.team1_id === team.id || f.team2_id === team.id));
+    const myPlayoffFixtures = fixtures.filter((f) => f.stage !== "league" && (f.team1_id === team.id || f.team2_id === team.id));
 
     app.appendChild(
       el("div", { class: "card" }, [
@@ -129,6 +135,16 @@
           : el("p", { class: "empty-state" }, "Fixtures haven't been generated yet - check back once your admin sets the schedule.")
       ])
     );
+
+    if (myPlayoffFixtures.length) {
+      const stageOrder = { QF: 0, SF: 1, F: 2 };
+      app.appendChild(
+        el("div", { class: "card" }, [
+          el("h3", {}, "My playoff matches"),
+          el("div", { class: "stack" }, myPlayoffFixtures.sort((a, b) => stageOrder[a.stage] - stageOrder[b.stage]).map((f) => fixtureRow(f)))
+        ])
+      );
+    }
 
     const { played, remaining } = window.Fixtures.opponentSplit(team.id, fixtures, confirmedFixtureIds);
     app.appendChild(
@@ -142,6 +158,20 @@
     );
 
     app.appendChild(el("div", { class: "card" }, [el("h3", {}, "League table"), standingsTable(standings)]));
+  }
+
+  function championCard(fixtures, results, teamsById) {
+    const final = fixtures.find((f) => f.stage === "F");
+    const result = final ? window.Results.activeResultForFixture(final.id, results) : null;
+    if (!final || !result || result.confirmation_status !== "confirmed") return null;
+    const championId = result.team1_score > result.team2_score ? final.team1_id : final.team2_id;
+    const champion = teamsById[championId];
+    if (!champion) return null;
+    return el("div", { class: "card champion-card" }, [
+      el("div", {}, "🏆 LEAGUE CHAMPIONS"),
+      el("h2", {}, champion.name),
+      el("p", { class: "muted" }, `${champion.player1} + ${champion.player2}`)
+    ]);
   }
 
   function statTile(label, value) {
@@ -182,11 +212,17 @@
     return el("div", { class: "standings-table" }, [headerRow, ...rowEls]);
   }
 
+  const STAGE_LABEL = { QF: "Quarter-final", SF: "Semi-final", F: "Final" };
+
   function fixtureRow(f) {
     const { team, teamsById, results } = ctx;
+    const label = f.stage === "league" ? `Week ${f.week}` : STAGE_LABEL[f.stage] || f.stage;
 
-    if (f.status === "bye" || f.team2_id == null) {
-      return el("div", { class: "fixture-row muted" }, [el("span", { class: "court-tag" }, `Week ${f.week}`), el("span", {}, "Bye week")]);
+    if (f.status === "bye") {
+      return el("div", { class: "fixture-row muted" }, [el("span", { class: "court-tag" }, label), el("span", {}, "Bye week")]);
+    }
+    if (f.team1_id == null || f.team2_id == null) {
+      return el("div", { class: "fixture-row muted" }, [el("span", { class: "court-tag" }, label), el("span", {}, "Waiting on earlier round")]);
     }
 
     const oppId = f.team1_id === team.id ? f.team2_id : f.team1_id;
@@ -194,7 +230,7 @@
     const result = window.Results.activeResultForFixture(f.id, results);
     const isTeam1 = f.team1_id === team.id;
 
-    const base = [el("span", { class: "court-tag" }, `Week ${f.week}`), el("span", {}, `vs ${oppName}`)];
+    const base = [el("span", { class: "court-tag" }, label), el("span", {}, `vs ${oppName}`)];
 
     if (!result) {
       const open = openSubmitForms.has(f.id);

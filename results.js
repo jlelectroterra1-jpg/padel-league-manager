@@ -6,7 +6,7 @@
 // confirmed row instead - this is what lets standings always be recomputed
 // straight from `results` without ever drifting from the real match history.
 (function (root) {
-  const { dbInsert, dbUpdate, dbList } = window.DB;
+  const { dbInsert, dbUpdate, dbList, dbGet } = window.DB;
 
   async function submitResult(fixture, submittingTeamId, myScore, oppScore) {
     const isTeam1 = fixture.team1_id === submittingTeamId;
@@ -29,7 +29,9 @@
       confirmed_by_team_id: confirmingTeamId,
       confirmed_at: new Date().toISOString()
     });
+    const fixture = await dbGet("fixtures", result.fixture_id);
     await dbUpdate("fixtures", result.fixture_id, { status: "completed" });
+    await afterConfirmed(fixture, saved);
     return saved;
   }
 
@@ -58,7 +60,33 @@
       superseded: false
     });
     await dbUpdate("fixtures", fixture.id, { status: "completed" });
+    await afterConfirmed(fixture, saved);
     return saved;
+  }
+
+  // Playoff-only follow-through: once a QF/SF/F result is confirmed, push the
+  // winner into whichever fixture/slot it feeds (see playoffs.js for how
+  // next_fixture_id/next_slot get set up when the bracket is built), and once
+  // the Final itself is confirmed, mark the league complete.
+  async function afterConfirmed(fixture, result) {
+    if (!fixture || fixture.stage === "league") return;
+
+    if (fixture.next_fixture_id) {
+      const winnerId =
+        result.team1_score === result.team2_score
+          ? null
+          : result.team1_score > result.team2_score
+          ? fixture.team1_id
+          : fixture.team2_id;
+      if (winnerId) {
+        const patch = fixture.next_slot === 2 ? { team2_id: winnerId } : { team1_id: winnerId };
+        await dbUpdate("fixtures", fixture.next_fixture_id, patch);
+      }
+    }
+
+    if (fixture.stage === "F") {
+      await dbUpdate("leagues", fixture.league_id, { status: "completed" });
+    }
   }
 
   // The single "live" result for a fixture, if any. Under correct usage

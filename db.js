@@ -54,7 +54,8 @@
       const params = new URLSearchParams({ select: "*", order: "created_at.asc" });
       if (filter) Object.entries(filter).forEach(([k, v]) => params.set(k, v));
       const res = await fetch(`${window.LEAGUE_CONFIG.supabaseUrl}/rest/v1/${table}?${params}`, {
-        headers: headers()
+        headers: headers(),
+        cache: "no-store"
       });
       if (!res.ok) throw new Error(`dbList ${table} failed: ${res.status} ${await res.text()}`);
       return res.json();

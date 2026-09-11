@@ -170,6 +170,7 @@
       teams: "Teams",
       fixtures: "Fixtures",
       standings: "Standings",
+      playoffs: "Playoffs",
       confirmations: `Confirmations${pendingCount ? ` (${pendingCount})` : ""}`,
       disputes: `Disputes${disputedCount ? ` (${disputedCount})` : ""}`,
       settings: "Settings"
@@ -188,6 +189,7 @@
     if (tab === "teams") app.appendChild(renderTeamsTab(league, teams, fixtures, results));
     else if (tab === "fixtures") app.appendChild(renderFixturesTab(league, teams, fixtures, results));
     else if (tab === "standings") app.appendChild(renderStandingsTab(league, teams, fixtures, results));
+    else if (tab === "playoffs") app.appendChild(renderPlayoffsTab(league, teams, fixtures, results));
     else if (tab === "confirmations") app.appendChild(renderConfirmationsTab(teams, fixtures, results));
     else if (tab === "disputes") app.appendChild(renderDisputesTab(teams, fixtures, results));
     else app.appendChild(renderSettingsTab(league));
@@ -261,6 +263,137 @@
       ])
     );
     return el("div", { class: "standings-table" }, [headerRow, ...rowEls]);
+  }
+
+  // ---------- Playoffs tab ----------
+
+  function renderPlayoffsTab(league, teams, fixtures, results) {
+    const teamsById = Object.fromEntries(teams.map((t) => [t.id, t]));
+    const leagueFixtures = fixtures.filter((f) => f.stage === "league" && f.status !== "bye");
+    const playoffFixtures = fixtures.filter((f) => f.stage !== "league");
+
+    if (league.status === "completed" || league.status === "archived") {
+      return el("div", { class: "stack" }, [championCard(league, playoffFixtures, results, teamsById), bracketView(playoffFixtures, results, teamsById)]);
+    }
+
+    if (!playoffFixtures.length) {
+      const remaining = leagueFixtures.filter((f) => {
+        const r = window.Results.activeResultForFixture(f.id, results);
+        return !r || r.confirmation_status !== "confirmed";
+      }).length;
+      const standings = window.Standings.computeStandings(teams.filter((t) => t.active), fixtures, results, league.scoring_config);
+      const qualifyCount = Math.min(league.playoff_size || 8, standings.length);
+
+      return el("div", { class: "stack" }, [
+        el("div", { class: "card" }, [
+          el("h3", {}, "Start playoffs"),
+          remaining > 0
+            ? el("p", { class: "form-error" }, `${remaining} league match${remaining === 1 ? "" : "es"} still need${remaining === 1 ? "s" : ""} a confirmed result before playoffs can start.`)
+            : el("p", { class: "muted" }, `Top ${qualifyCount} team${qualifyCount === 1 ? "" : "s"} will qualify based on the current league table.`),
+          el(
+            "button",
+            { class: "btn btn-primary", type: "button", disabled: remaining > 0 || standings.length < 2, onclick: () => startPlayoffs(league, standings) },
+            "Start playoffs"
+          )
+        ]),
+        el("div", { class: "card" }, [el("h3", {}, "Current standings"), standingsTable(standings)])
+      ]);
+    }
+
+    return bracketView(playoffFixtures, results, teamsById);
+  }
+
+  async function startPlayoffs(league, standings) {
+    const bracketDefs = window.Playoffs.buildBracket(standings, league.playoff_size || 8);
+    if (!bracketDefs.length) {
+      alert("Not enough teams for a playoff bracket.");
+      return;
+    }
+    const slotToId = {};
+    const inserted = [];
+    for (const def of bracketDefs) {
+      const { next_bracket_slot, next_slot, ...rest } = def;
+      const saved = await dbInsert("fixtures", { ...rest, league_id: league.id, week: 900, stage: def.stage });
+      slotToId[def.bracket_slot] = saved.id;
+      inserted.push({ id: saved.id, next_bracket_slot, next_slot });
+    }
+    for (const def of inserted) {
+      if (def.next_bracket_slot) {
+        await dbUpdate("fixtures", def.id, { next_fixture_id: slotToId[def.next_bracket_slot], next_slot: def.next_slot });
+      }
+    }
+    await dbUpdate("leagues", league.id, { status: "playoffs" });
+    render();
+  }
+
+  function bracketView(playoffFixtures, results, teamsById) {
+    const byStage = {};
+    playoffFixtures.forEach((f) => (byStage[f.stage] = byStage[f.stage] || []).push(f));
+    const stageTitle = { QF: "Quarter-finals", SF: "Semi-finals", F: "Final" };
+
+    return el(
+      "div",
+      { class: "stack" },
+      window.Playoffs.STAGE_ORDER.filter((s) => byStage[s]).map((stage) =>
+        el("div", { class: "card" }, [
+          el("h3", {}, stageTitle[stage]),
+          el(
+            "div",
+            { class: "stack" },
+            byStage[stage].map((f) => playoffMatchRow(f, results, teamsById))
+          )
+        ])
+      )
+    );
+  }
+
+  function playoffMatchRow(fixture, results, teamsById) {
+    const result = window.Results.activeResultForFixture(fixture.id, results);
+    const name1 = fixture.team1_id ? teamName(fixture.team1_id, teamsById) : "TBD";
+    const name2 = fixture.team2_id ? teamName(fixture.team2_id, teamsById) : "TBD";
+    const canEnter = fixture.team1_id && fixture.team2_id;
+
+    const row = el("div", { class: "fixture-row" }, [
+      el("span", {}, `${name1} vs ${name2}`),
+      resultBadge(result),
+      canEnter && !result
+        ? el("button", { class: "btn btn-ghost small", type: "button", onclick: () => toggleEnterScore(fixture.id) }, enterScoreFixtures.has(fixture.id) ? "Cancel" : "Enter score")
+        : null,
+      canEnter && result
+        ? el("button", { class: "btn btn-ghost small", type: "button", onclick: () => toggleOverride(result.id) }, "Correct score")
+        : null
+    ]);
+
+    if (canEnter && !result && enterScoreFixtures.has(fixture.id)) {
+      return el("div", { class: "fixture-block" }, [row, overrideForm(fixture, null)]);
+    }
+    if (canEnter && result && overrideForms.has(result.id)) {
+      return el("div", { class: "fixture-block" }, [row, overrideForm(fixture, result)]);
+    }
+    return row;
+  }
+
+  function championCard(league, playoffFixtures, results, teamsById) {
+    const final = playoffFixtures.find((f) => f.stage === "F");
+    const result = final ? window.Results.activeResultForFixture(final.id, results) : null;
+    if (!final || !result || result.confirmation_status !== "confirmed") {
+      return el("div", { class: "card" }, el("p", { class: "muted" }, "Champion will show here once the final is confirmed."));
+    }
+    const championId = result.team1_score > result.team2_score ? final.team1_id : final.team2_id;
+    const champion = teamsById[championId];
+    return el("div", { class: "card champion-card" }, [
+      el("div", {}, "🏆 LEAGUE CHAMPIONS"),
+      el("h2", {}, champion ? champion.name : "Unknown"),
+      champion ? el("p", { class: "muted" }, `${champion.player1} + ${champion.player2}`) : null,
+      league.status === "completed"
+        ? el("button", { class: "btn btn-primary", type: "button", onclick: () => archiveLeague(league) }, "Archive league")
+        : badge("archived", "neutral")
+    ]);
+  }
+
+  async function archiveLeague(league) {
+    await dbUpdate("leagues", league.id, { status: "archived" });
+    render();
   }
 
   // ---------- Teams tab ----------
@@ -396,13 +529,14 @@
     const activeTeams = teams.filter((t) => t.active);
     const leagueFixtures = fixtures.filter((f) => f.stage === "league");
 
+    const playoffsStarted = league.status === "playoffs" || league.status === "completed" || league.status === "archived";
     const generateBtn = el(
       "button",
       {
         class: "btn btn-primary",
         type: "button",
-        disabled: activeTeams.length < 2,
-        onclick: () => generateFixtures(league, activeTeams, fixtures)
+        disabled: activeTeams.length < 2 || playoffsStarted,
+        onclick: () => generateFixtures(league, activeTeams, leagueFixtures)
       },
       leagueFixtures.length ? "Regenerate fixtures" : "Generate fixtures"
     );
@@ -412,7 +546,8 @@
         el("p", { class: "muted" }, `${activeTeams.length} active team${activeTeams.length === 1 ? "" : "s"} · ${league.num_courts || 1} court${league.num_courts === 1 ? "" : "s"}`),
         generateBtn
       ]),
-      activeTeams.length < 2 ? el("p", { class: "form-error" }, "Add at least 2 active teams first.") : null
+      activeTeams.length < 2 ? el("p", { class: "form-error" }, "Add at least 2 active teams first.") : null,
+      playoffsStarted ? el("p", { class: "muted small" }, "Playoffs have started - the league schedule is locked.") : null
     ]);
 
     if (!leagueFixtures.length) {

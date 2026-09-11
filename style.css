@@ -220,6 +220,13 @@ body{
 .next-match .label{ font-size:11px; text-transform:uppercase; letter-spacing:0.03em; color:var(--muted); font-weight:700; }
 .next-match .opp{ font-family:var(--font-display); font-size:18px; font-weight:800; margin:4px 0; }
 
+/* champion */
+.champion-card{
+    text-align:center; background:linear-gradient(180deg,rgba(245,158,11,0.14),rgba(23,32,50,0.98));
+    border-color:rgba(245,158,11,0.4);
+}
+.champion-card h2{ margin:6px 0; font-size:26px; }
+
 @media (max-width: 640px){
     .opponent-split{ grid-template-columns:1fr; }
     .field-row.three{ flex-direction:column; }
