@@ -767,6 +767,66 @@
       setTimeout(() => (saved.hidden = true), 1500);
     });
 
-    return form;
+    return el("div", { class: "stack" }, [form, endLeagueCard(league), deleteLeagueCard(league)]);
+  }
+
+  function endLeagueCard(league) {
+    if (league.status === "archived") {
+      return el("div", { class: "card" }, [el("h3", {}, "End league"), el("p", { class: "muted" }, "This league is already archived.")]);
+    }
+    return el("div", { class: "card" }, [
+      el("h3", {}, "End league"),
+      el("p", { class: "muted" }, "Marks the league as finished and moves it out of the active list. Nothing is deleted - teams, fixtures, and results stay viewable forever."),
+      el(
+        "button",
+        {
+          class: "btn btn-ghost",
+          type: "button",
+          onclick: async () => {
+            if (!confirm(`End "${league.name}" now? You can't resume it once archived.`)) return;
+            await dbUpdate("leagues", league.id, { status: "archived" });
+            render();
+          }
+        },
+        "End league"
+      )
+    ]);
+  }
+
+  function deleteLeagueCard(league) {
+    const confirmName = el("input", { class: "input", placeholder: `Type "${league.name}" to confirm` });
+    const deleteBtn = el("button", { class: "btn btn-danger", type: "button", disabled: true }, "Delete league permanently");
+
+    confirmName.addEventListener("input", () => {
+      deleteBtn.disabled = confirmName.value.trim() !== league.name;
+    });
+
+    deleteBtn.addEventListener("click", async () => {
+      if (confirmName.value.trim() !== league.name) return;
+      deleteBtn.disabled = true;
+      deleteBtn.textContent = "Deleting...";
+      await deleteLeagueCompletely(league);
+    });
+
+    return el("div", { class: "card danger-card" }, [
+      el("h3", {}, "Delete league"),
+      el("p", { class: "muted" }, "Permanently removes this league and every team, fixture, and result in it. This cannot be undone."),
+      confirmName,
+      deleteBtn
+    ]);
+  }
+
+  async function deleteLeagueCompletely(league) {
+    // Delete fixtures ourselves in dependency order (league-stage, then
+    // QF/SF/F) rather than relying on the DB cascade, since a fixture with
+    // an active next_fixture_id pointer can't be deleted while something
+    // still points to it.
+    const stageOrder = { league: 0, QF: 1, SF: 2, F: 3 };
+    const fixtures = await dbList("fixtures", { league_id: `eq.${league.id}` });
+    fixtures.sort((a, b) => (stageOrder[a.stage] ?? 0) - (stageOrder[b.stage] ?? 0));
+    for (const f of fixtures) await dbDelete("fixtures", f.id);
+    // Results cascade-delete with their fixture; teams cascade-delete with the league.
+    await dbDelete("leagues", league.id);
+    navigate("#/leagues");
   }
 })();
