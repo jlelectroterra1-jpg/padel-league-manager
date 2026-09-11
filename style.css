@@ -152,13 +152,9 @@ body{
 .back-link:hover{ color:var(--text); }
 
 .tabs-inline{
-    display:flex; gap:8px; margin-bottom:16px;
-    overflow-x:auto; -webkit-overflow-scrolling:touch;
-    scrollbar-width:none;
+    display:flex; flex-wrap:wrap; gap:8px; margin-bottom:16px;
 }
-.tabs-inline::-webkit-scrollbar{ display:none; }
 .tab-inline{
-    flex:none;
     padding:8px 16px; border-radius:999px; text-decoration:none; color:var(--muted);
     font-weight:700; font-size:13.5px; border:1px solid transparent; white-space:nowrap;
 }
