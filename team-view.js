@@ -84,13 +84,35 @@
 
   function render() {
     const { team, league, teamsById, fixtures, results } = ctx;
+    const allTeams = Object.values(teamsById);
     app.innerHTML = "";
+
+    const standings = window.Standings.computeStandings(allTeams, fixtures, results, league ? league.scoring_config : null);
+    const myRow = standings.find((r) => r.team.id === team.id);
+    const next = window.Fixtures.nextFixtureForTeam(team.id, fixtures, results);
+    const nextOpp = next ? (next.team1_id === team.id ? next.team2_id : next.team1_id) : null;
 
     app.appendChild(
       el("div", { class: "card team-hero" }, [
         el("div", { class: "muted small" }, league ? league.name : ""),
         el("h2", {}, team.name),
-        el("p", { class: "muted" }, `${team.player1} + ${team.player2}`)
+        el("p", { class: "muted" }, `${team.player1} + ${team.player2}`),
+        myRow
+          ? el("div", { class: "summary-grid" }, [
+              statTile("Position", ordinal(myRow.position)),
+              statTile("Played", myRow.played),
+              statTile("Won", myRow.won),
+              statTile("Lost", myRow.lost),
+              statTile("Points", myRow.pts)
+            ])
+          : null,
+        next
+          ? el("div", { class: "next-match" }, [
+              el("div", { class: "label" }, "Next match"),
+              el("div", { class: "opp" }, `vs ${teamsById[nextOpp] ? teamsById[nextOpp].name : "Unknown"}`),
+              el("div", { class: "muted small" }, `Week ${next.week}`)
+            ])
+          : null
       ])
     );
 
@@ -118,6 +140,46 @@
         ])
       ])
     );
+
+    app.appendChild(el("div", { class: "card" }, [el("h3", {}, "League table"), standingsTable(standings)]));
+  }
+
+  function statTile(label, value) {
+    return el("div", { class: "stat-tile" }, [el("div", { class: "stat-value" }, String(value)), el("div", { class: "stat-label" }, label)]);
+  }
+
+  function ordinal(n) {
+    const s = ["th", "st", "nd", "rd"];
+    const v = n % 100;
+    return n + (s[(v - 20) % 10] || s[v] || s[0]);
+  }
+
+  function standingsTable(rows) {
+    const headerRow = el("div", { class: "standings-row standings-header" }, [
+      el("span", {}, "Pos"),
+      el("span", { class: "standings-team" }, "Team"),
+      el("span", {}, "P"),
+      el("span", {}, "W"),
+      el("span", {}, "L"),
+      el("span", {}, "PF"),
+      el("span", {}, "PA"),
+      el("span", {}, "DIFF"),
+      el("span", {}, "PTS")
+    ]);
+    const rowEls = rows.map((r) =>
+      el("div", { class: `standings-row${r.team.id === ctx.team.id ? " standings-me" : ""}` }, [
+        el("span", {}, String(r.position)),
+        el("span", { class: "standings-team" }, r.team.name),
+        el("span", {}, String(r.played)),
+        el("span", {}, String(r.won)),
+        el("span", {}, String(r.lost)),
+        el("span", {}, String(r.pf)),
+        el("span", {}, String(r.pa)),
+        el("span", {}, r.diff > 0 ? `+${r.diff}` : String(r.diff)),
+        el("span", { class: "standings-pts" }, String(r.pts))
+      ])
+    );
+    return el("div", { class: "standings-table" }, [headerRow, ...rowEls]);
   }
 
   function fixtureRow(f) {

@@ -6,7 +6,7 @@
 // confirmed row instead - this is what lets standings always be recomputed
 // straight from `results` without ever drifting from the real match history.
 (function (root) {
-  const { dbInsert, dbUpdate } = window.DB;
+  const { dbInsert, dbUpdate, dbList } = window.DB;
 
   async function submitResult(fixture, submittingTeamId, myScore, oppScore) {
     const isTeam1 = fixture.team1_id === submittingTeamId;
@@ -42,7 +42,11 @@
   }
 
   async function adminSetResult(fixture, oldResult, team1_score, team2_score) {
-    if (oldResult) await dbUpdate("results", oldResult.id, { superseded: true });
+    // Supersede every currently-active result for this fixture, not just the
+    // one the caller thinks is active - keeps "at most one live result per
+    // fixture" true even if the caller's view of the world was stale.
+    const existing = await dbList("results", { fixture_id: `eq.${fixture.id}` });
+    for (const r of existing.filter((r) => !r.superseded)) await dbUpdate("results", r.id, { superseded: true });
     const saved = await dbInsert("results", {
       fixture_id: fixture.id,
       team1_score,
@@ -57,9 +61,14 @@
     return saved;
   }
 
-  // The single "live" result for a fixture, if any - the latest non-superseded row.
+  // The single "live" result for a fixture, if any. Under correct usage
+  // there's at most one non-superseded row per fixture, but this picks the
+  // most recently created one if that's ever violated, rather than whichever
+  // the API happened to return first.
   function activeResultForFixture(fixtureId, allResults) {
-    return allResults.find((r) => r.fixture_id === fixtureId && !r.superseded) || null;
+    const candidates = allResults.filter((r) => r.fixture_id === fixtureId && !r.superseded);
+    if (!candidates.length) return null;
+    return candidates.reduce((latest, r) => (new Date(r.created_at) > new Date(latest.created_at) ? r : latest));
   }
 
   const Results = { submitResult, confirmResult, disputeResult, adminSetResult, activeResultForFixture };

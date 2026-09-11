@@ -186,6 +186,40 @@ body{
 .team-hero{ text-align:center; }
 .team-hero h2{ margin:6px 0 2px; }
 
+/* stats strip */
+.stats-strip{
+    display:grid; grid-template-columns:repeat(auto-fit, minmax(84px, 1fr)); gap:8px;
+    margin-bottom:16px;
+}
+.stat-tile{
+    background:var(--panel); border:1px solid var(--line-soft); border-radius:var(--radius-sm);
+    padding:10px 8px; text-align:center;
+}
+.stat-value{ font-family:var(--font-display); font-weight:800; font-size:20px; }
+.stat-label{ color:var(--muted); font-size:10.5px; text-transform:uppercase; letter-spacing:0.03em; margin-top:2px; }
+
+/* standings table */
+.standings-table{ overflow-x:auto; }
+.standings-row{
+    display:grid; grid-template-columns:32px 1fr 30px 30px 30px 40px 40px 48px 48px;
+    align-items:center; gap:4px; padding:9px 6px; font-size:13px; min-width:460px;
+    border-bottom:1px solid var(--line-soft);
+}
+.standings-row:last-child{ border-bottom:none; }
+.standings-header{ color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:0.02em; font-weight:700; }
+.standings-team{ font-weight:700; display:flex; align-items:center; gap:4px; }
+.standings-pts{ font-weight:800; color:var(--brand); }
+.standings-me{ background:rgba(45,212,191,0.08); border-radius:8px; }
+
+/* team dashboard summary */
+.summary-grid{ display:grid; grid-template-columns:repeat(auto-fit, minmax(90px, 1fr)); gap:8px; margin-top:14px; }
+.next-match{
+    margin-top:14px; padding:12px; border-radius:var(--radius-sm); border:1px dashed rgba(45,212,191,0.4);
+    background:rgba(45,212,191,0.06); text-align:center;
+}
+.next-match .label{ font-size:11px; text-transform:uppercase; letter-spacing:0.03em; color:var(--muted); font-weight:700; }
+.next-match .opp{ font-family:var(--font-display); font-size:18px; font-weight:800; margin:4px 0; }
+
 @media (max-width: 640px){
     .opponent-split{ grid-template-columns:1fr; }
     .field-row.three{ flex-direction:column; }

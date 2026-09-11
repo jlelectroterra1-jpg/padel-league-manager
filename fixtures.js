@@ -77,7 +77,25 @@
     return { played, remaining };
   }
 
-  const Fixtures = { generateRoundRobin, opponentSplit };
+  // The earliest league-stage fixture for a team that doesn't have a
+  // confirmed result yet (byes excluded) - used for a dashboard's "next match".
+  function nextFixtureForTeam(teamId, fixtures, results) {
+    const confirmedIds = new Set(
+      results.filter((r) => r.confirmation_status === "confirmed" && !r.superseded).map((r) => r.fixture_id)
+    );
+    const upcoming = fixtures
+      .filter(
+        (f) =>
+          f.stage === "league" &&
+          f.status !== "bye" &&
+          (f.team1_id === teamId || f.team2_id === teamId) &&
+          !confirmedIds.has(f.id)
+      )
+      .sort((a, b) => a.week - b.week);
+    return upcoming[0] || null;
+  }
+
+  const Fixtures = { generateRoundRobin, opponentSplit, nextFixtureForTeam };
   if (typeof module !== "undefined" && module.exports) module.exports = Fixtures;
   else root.Fixtures = Fixtures;
 })(typeof window !== "undefined" ? window : globalThis);

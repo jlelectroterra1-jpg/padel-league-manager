@@ -164,9 +164,12 @@
       ])
     );
 
+    app.appendChild(leagueStatsStrip(teams, fixtures, results));
+
     const tabLabels = {
       teams: "Teams",
       fixtures: "Fixtures",
+      standings: "Standings",
       confirmations: `Confirmations${pendingCount ? ` (${pendingCount})` : ""}`,
       disputes: `Disputes${disputedCount ? ` (${disputedCount})` : ""}`,
       settings: "Settings"
@@ -184,9 +187,80 @@
 
     if (tab === "teams") app.appendChild(renderTeamsTab(league, teams, fixtures, results));
     else if (tab === "fixtures") app.appendChild(renderFixturesTab(league, teams, fixtures, results));
+    else if (tab === "standings") app.appendChild(renderStandingsTab(league, teams, fixtures, results));
     else if (tab === "confirmations") app.appendChild(renderConfirmationsTab(teams, fixtures, results));
     else if (tab === "disputes") app.appendChild(renderDisputesTab(teams, fixtures, results));
     else app.appendChild(renderSettingsTab(league));
+  }
+
+  // ---------- League-wide stats strip (shown above the tabs on every view) ----------
+
+  function leagueStatsStrip(teams, fixtures, results) {
+    const leagueFixtures = fixtures.filter((f) => f.stage === "league" && f.status !== "bye");
+    const confirmedFixtureIds = new Set(
+      results.filter((r) => r.confirmation_status === "confirmed" && !r.superseded).map((r) => r.fixture_id)
+    );
+    const completed = leagueFixtures.filter((f) => confirmedFixtureIds.has(f.id)).length;
+    const remaining = leagueFixtures.length - completed;
+    const pending = results.filter((r) => r.confirmation_status === "pending" && !r.superseded).length;
+    const disputed = results.filter((r) => r.confirmation_status === "disputed" && !r.superseded).length;
+
+    const outstandingWeeks = leagueFixtures.filter((f) => !confirmedFixtureIds.has(f.id)).map((f) => f.week);
+    const currentWeek = outstandingWeeks.length ? Math.min(...outstandingWeeks) : null;
+
+    const stats = [
+      ["Teams", teams.length],
+      ["Matches", leagueFixtures.length],
+      ["Completed", completed],
+      ["Remaining", remaining],
+      ["Current week", currentWeek ? `Week ${currentWeek}` : leagueFixtures.length ? "Complete" : "—"],
+      ["Pending", pending],
+      ["Disputed", disputed]
+    ];
+
+    return el(
+      "div",
+      { class: "stats-strip" },
+      stats.map(([label, value]) => el("div", { class: "stat-tile" }, [el("div", { class: "stat-value" }, String(value)), el("div", { class: "stat-label" }, label)]))
+    );
+  }
+
+  // ---------- Standings tab ----------
+
+  function renderStandingsTab(league, teams, fixtures, results) {
+    if (!teams.length) {
+      return el("div", { class: "card" }, el("p", { class: "empty-state" }, "Add teams to see a league table."));
+    }
+    const rows = window.Standings.computeStandings(teams, fixtures, results, league.scoring_config);
+    return el("div", { class: "card" }, [el("h3", {}, "League table"), standingsTable(rows)]);
+  }
+
+  function standingsTable(rows) {
+    const headerRow = el("div", { class: "standings-row standings-header" }, [
+      el("span", {}, "Pos"),
+      el("span", { class: "standings-team" }, "Team"),
+      el("span", {}, "P"),
+      el("span", {}, "W"),
+      el("span", {}, "L"),
+      el("span", {}, "PF"),
+      el("span", {}, "PA"),
+      el("span", {}, "DIFF"),
+      el("span", {}, "PTS")
+    ]);
+    const rowEls = rows.map((r) =>
+      el("div", { class: "standings-row" }, [
+        el("span", {}, String(r.position)),
+        el("span", { class: "standings-team" }, [r.team.name, !r.team.active ? badge("inactive", "neutral") : null]),
+        el("span", {}, String(r.played)),
+        el("span", {}, String(r.won)),
+        el("span", {}, String(r.lost)),
+        el("span", {}, String(r.pf)),
+        el("span", {}, String(r.pa)),
+        el("span", {}, r.diff > 0 ? `+${r.diff}` : String(r.diff)),
+        el("span", { class: "standings-pts" }, String(r.pts))
+      ])
+    );
+    return el("div", { class: "standings-table" }, [headerRow, ...rowEls]);
   }
 
   // ---------- Teams tab ----------
