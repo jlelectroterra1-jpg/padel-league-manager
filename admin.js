@@ -138,10 +138,11 @@
   // ---------- League detail ----------
 
   async function renderLeagueDetail(leagueId, tab) {
-    const [league, teams, fixtures] = await Promise.all([
+    const [league, teams, fixtures, allResults] = await Promise.all([
       dbGet("leagues", leagueId),
       dbList("teams", { league_id: `eq.${leagueId}` }),
-      dbList("fixtures", { league_id: `eq.${leagueId}` })
+      dbList("fixtures", { league_id: `eq.${leagueId}` }),
+      dbList("results")
     ]);
 
     app.innerHTML = "";
@@ -149,6 +150,11 @@
       app.appendChild(el("div", { class: "card" }, "League not found."));
       return;
     }
+
+    const fixtureIds = new Set(fixtures.map((f) => f.id));
+    const results = allResults.filter((r) => fixtureIds.has(r.fixture_id));
+    const pendingCount = results.filter((r) => r.confirmation_status === "pending" && !r.superseded).length;
+    const disputedCount = results.filter((r) => r.confirmation_status === "disputed" && !r.superseded).length;
 
     app.appendChild(
       el("div", { class: "detail-header" }, [
@@ -158,31 +164,37 @@
       ])
     );
 
+    const tabLabels = {
+      teams: "Teams",
+      fixtures: "Fixtures",
+      confirmations: `Confirmations${pendingCount ? ` (${pendingCount})` : ""}`,
+      disputes: `Disputes${disputedCount ? ` (${disputedCount})` : ""}`,
+      settings: "Settings"
+    };
+
     app.appendChild(
       el(
         "div",
         { class: "tabs-inline" },
-        ["teams", "fixtures", "settings"].map((t) =>
-          el(
-            "a",
-            { class: `tab-inline ${t === tab ? "active" : ""}`, href: `#/league/${leagueId}/${t}` },
-            t[0].toUpperCase() + t.slice(1)
-          )
+        Object.keys(tabLabels).map((t) =>
+          el("a", { class: `tab-inline ${t === tab ? "active" : ""}`, href: `#/league/${leagueId}/${t}` }, tabLabels[t])
         )
       )
     );
 
-    if (tab === "teams") app.appendChild(renderTeamsTab(league, teams, fixtures));
-    else if (tab === "fixtures") app.appendChild(renderFixturesTab(league, teams, fixtures));
+    if (tab === "teams") app.appendChild(renderTeamsTab(league, teams, fixtures, results));
+    else if (tab === "fixtures") app.appendChild(renderFixturesTab(league, teams, fixtures, results));
+    else if (tab === "confirmations") app.appendChild(renderConfirmationsTab(teams, fixtures, results));
+    else if (tab === "disputes") app.appendChild(renderDisputesTab(teams, fixtures, results));
     else app.appendChild(renderSettingsTab(league));
   }
 
   // ---------- Teams tab ----------
 
-  function renderTeamsTab(league, teams, fixtures) {
+  function renderTeamsTab(league, teams, fixtures, results) {
     const teamsById = Object.fromEntries(teams.map((t) => [t.id, t]));
     const rows = teams.length
-      ? teams.map((team) => teamRow(league, team, teams, fixtures, teamsById))
+      ? teams.map((team) => teamRow(league, team, teams, fixtures, teamsById, results))
       : [el("p", { class: "empty-state" }, "No teams yet - add your fixed pairs below.")];
 
     return el("div", { class: "stack" }, [
@@ -191,7 +203,7 @@
     ]);
   }
 
-  function teamRow(league, team, allTeams, fixtures, teamsById) {
+  function teamRow(league, team, allTeams, fixtures, teamsById, results) {
     const expanded = expandedTeams.has(team.id);
     const link = `${location.origin}${location.pathname.replace(/admin\.html$/, "")}team.html?code=${team.access_code}`;
 
@@ -216,7 +228,9 @@
     const children = [header, linkRow];
 
     if (expanded) {
-      const confirmedFixtureIds = new Set(); // wired up once results exist (Phase 2)
+      const confirmedFixtureIds = new Set(
+        results.filter((r) => r.confirmation_status === "confirmed" && !r.superseded).map((r) => r.fixture_id)
+      );
       const { played, remaining } = window.Fixtures.opponentSplit(team.id, fixtures, confirmedFixtureIds);
       children.push(
         el("div", { class: "opponent-split" }, [
@@ -303,7 +317,7 @@
 
   // ---------- Fixtures tab ----------
 
-  function renderFixturesTab(league, teams, fixtures) {
+  function renderFixturesTab(league, teams, fixtures, results) {
     const teamsById = Object.fromEntries(teams.map((t) => [t.id, t]));
     const activeTeams = teams.filter((t) => t.active);
     const leagueFixtures = fixtures.filter((f) => f.stage === "league");
@@ -337,28 +351,56 @@
     const weeks = Object.keys(byWeek)
       .map(Number)
       .sort((a, b) => a - b)
-      .map((week) => weekCard(week, byWeek[week], teamsById));
+      .map((week) => weekCard(week, byWeek[week], teamsById, results));
 
     return el("div", { class: "stack" }, [header, ...weeks]);
   }
 
-  function weekCard(week, matches, teamsById) {
+  const enterScoreFixtures = new Set();
+
+  function weekCard(week, matches, teamsById, results) {
     matches.sort((a, b) => (a.time_slot || 0) - (b.time_slot || 0) || (a.court || 0) - (b.court || 0));
     return el("div", { class: "card" }, [
       el("h3", {}, `Week ${week}`),
       el(
         "div",
         { class: "stack" },
-        matches.map((f) =>
-          f.status === "bye"
-            ? el("div", { class: "fixture-row muted" }, `${teamName(f.team1_id, teamsById)} has a bye`)
-            : el("div", { class: "fixture-row" }, [
-                el("span", { class: "court-tag" }, `Court ${f.court}${matches.length > 1 && f.time_slot > 1 ? ` · slot ${f.time_slot}` : ""}`),
-                el("span", {}, `${teamName(f.team1_id, teamsById)} vs ${teamName(f.team2_id, teamsById)}`)
-              ])
-        )
+        matches.map((f) => {
+          if (f.status === "bye") return el("div", { class: "fixture-row muted" }, `${teamName(f.team1_id, teamsById)} has a bye`);
+          const result = window.Results.activeResultForFixture(f.id, results);
+          const row = el("div", { class: "fixture-row" }, [
+            el("span", { class: "court-tag" }, `Court ${f.court}${matches.length > 1 && f.time_slot > 1 ? ` · slot ${f.time_slot}` : ""}`),
+            el("span", {}, `${teamName(f.team1_id, teamsById)} vs ${teamName(f.team2_id, teamsById)}`),
+            resultBadge(result),
+            !result
+              ? el(
+                  "button",
+                  { class: "btn btn-ghost small", type: "button", onclick: () => toggleEnterScore(f.id) },
+                  enterScoreFixtures.has(f.id) ? "Cancel" : "Enter score"
+                )
+              : null
+          ]);
+          if (!result && enterScoreFixtures.has(f.id)) {
+            return el("div", { class: "fixture-block" }, [row, overrideForm(f, null)]);
+          }
+          return row;
+        })
       )
     ]);
+  }
+
+  function toggleEnterScore(fixtureId) {
+    if (enterScoreFixtures.has(fixtureId)) enterScoreFixtures.delete(fixtureId);
+    else enterScoreFixtures.add(fixtureId);
+    render();
+  }
+
+  function resultBadge(result) {
+    if (!result) return null;
+    const score = `${result.team1_score}-${result.team2_score}`;
+    if (result.confirmation_status === "confirmed") return badge(`${score} confirmed`, "green");
+    if (result.confirmation_status === "disputed") return badge(`${score} disputed`, "amber");
+    return badge(`${score} pending`, "blue");
   }
 
   function teamName(id, teamsById) {
@@ -366,13 +408,117 @@
   }
 
   async function generateFixtures(league, activeTeams, existingFixtures) {
-    if (existingFixtures.length && !confirm("This replaces the current fixture list. Continue?")) return;
+    if (existingFixtures.length && !confirm("This replaces the current fixture list AND deletes any scores already recorded against it. Continue?")) return;
     for (const f of existingFixtures) await dbDelete("fixtures", f.id);
     const teamIds = activeTeams.map((t) => t.id);
     const generated = window.Fixtures.generateRoundRobin(teamIds, league.num_courts || 1);
     for (const f of generated) await dbInsert("fixtures", { ...f, league_id: league.id });
     if (league.status === "draft") await dbUpdate("leagues", league.id, { status: "active" });
     render();
+  }
+
+  // ---------- Confirmations tab ----------
+
+  function renderConfirmationsTab(teams, fixtures, results) {
+    const teamsById = Object.fromEntries(teams.map((t) => [t.id, t]));
+    const fixturesById = Object.fromEntries(fixtures.map((f) => [f.id, f]));
+    const pending = results.filter((r) => r.confirmation_status === "pending" && !r.superseded);
+
+    if (!pending.length) {
+      return el("div", { class: "card" }, el("p", { class: "empty-state" }, "No results waiting on a confirmation right now."));
+    }
+
+    return el(
+      "div",
+      { class: "stack" },
+      pending.map((result) => {
+        const fixture = fixturesById[result.fixture_id];
+        if (!fixture) return null;
+        const submittedBy = teamsById[result.submitted_by_team_id];
+        return el("div", { class: "card" }, [
+          el("div", { class: "fixture-row" }, [
+            el("span", { class: "court-tag" }, `Week ${fixture.week}`),
+            el("strong", {}, `${teamName(fixture.team1_id, teamsById)} ${result.team1_score} - ${result.team2_score} ${teamName(fixture.team2_id, teamsById)}`)
+          ]),
+          el("p", { class: "muted small" }, `Submitted by ${submittedBy ? submittedBy.name : "unknown team"}`),
+          el("div", { class: "row-actions" }, [
+            el("button", { class: "btn btn-primary small", type: "button", onclick: () => forceConfirm(result) }, "Force confirm"),
+            el("button", { class: "btn btn-ghost small", type: "button", onclick: () => toggleOverride(result.id) }, "Correct score")
+          ]),
+          overrideForms.has(result.id) ? overrideForm(fixture, result) : null
+        ]);
+      })
+    );
+  }
+
+  async function forceConfirm(result) {
+    await window.Results.confirmResult(result, null);
+    render();
+  }
+
+  // ---------- Disputes tab ----------
+
+  function renderDisputesTab(teams, fixtures, results) {
+    const teamsById = Object.fromEntries(teams.map((t) => [t.id, t]));
+    const fixturesById = Object.fromEntries(fixtures.map((f) => [f.id, f]));
+    const disputed = results.filter((r) => r.confirmation_status === "disputed" && !r.superseded);
+
+    if (!disputed.length) {
+      return el("div", { class: "card" }, el("p", { class: "empty-state" }, "No disputed results."));
+    }
+
+    return el(
+      "div",
+      { class: "stack" },
+      disputed.map((result) => {
+        const fixture = fixturesById[result.fixture_id];
+        if (!fixture) return null;
+        return el("div", { class: "card" }, [
+          el("div", { class: "fixture-row" }, [
+            el("span", { class: "court-tag" }, `Week ${fixture.week}`),
+            el("strong", {}, `${teamName(fixture.team1_id, teamsById)} ${result.team1_score} - ${result.team2_score} ${teamName(fixture.team2_id, teamsById)}`),
+            badge("disputed", "amber")
+          ]),
+          result.dispute_reason ? el("p", { class: "muted small" }, `Reason given: ${result.dispute_reason}`) : null,
+          overrideForm(fixture, result, true)
+        ]);
+      })
+    );
+  }
+
+  const overrideForms = new Set();
+
+  function toggleOverride(resultId) {
+    if (overrideForms.has(resultId)) overrideForms.delete(resultId);
+    else overrideForms.add(resultId);
+    render();
+  }
+
+  function overrideForm(fixture, oldResult, alwaysOpen) {
+    const score1 = el("input", { class: "input", type: "number", min: "0", value: oldResult ? oldResult.team1_score : 0 });
+    const score2 = el("input", { class: "input", type: "number", min: "0", value: oldResult ? oldResult.team2_score : 0 });
+    const error = el("p", { class: "form-error", hidden: true });
+
+    const form = el("form", { class: alwaysOpen ? "" : "inline-form" }, [
+      el("div", { class: "field-row" }, [field("Score 1", score1), field("Score 2", score2)]),
+      error,
+      el("button", { class: "btn btn-primary small", type: "submit" }, oldResult ? "Save correct score" : "Save score")
+    ]);
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      if (score1.value === "" || score2.value === "") {
+        error.hidden = false;
+        error.textContent = "Enter both scores.";
+        return;
+      }
+      await window.Results.adminSetResult(fixture, oldResult, Number(score1.value), Number(score2.value));
+      if (oldResult) overrideForms.delete(oldResult.id);
+      else enterScoreFixtures.delete(fixture.id);
+      render();
+    });
+
+    return form;
   }
 
   // ---------- Settings tab ----------

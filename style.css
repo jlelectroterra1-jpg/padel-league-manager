@@ -173,6 +173,11 @@ body{
     font-size:11.5px; font-weight:700; white-space:nowrap;
 }
 
+.fixture-block{ display:flex; flex-direction:column; gap:8px; padding:8px 10px; border-radius:var(--radius-sm); background:rgba(255,255,255,0.02); }
+.fixture-block .fixture-row{ background:transparent; padding:0; }
+.inline-form{ margin:0; padding:12px; box-shadow:none; background:rgba(255,255,255,0.03); }
+.inline-form .field-row{ margin-bottom:8px; }
+
 /* opponent tracker */
 .opponent-split{ display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-top:12px; }
 .opponent-list-title{ font-weight:700; font-size:12.5px; text-transform:uppercase; letter-spacing:0.03em; color:var(--muted); margin-bottom:6px; }
