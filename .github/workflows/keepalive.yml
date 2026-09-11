@@ -1,0 +1,27 @@
+name: Supabase keep-alive
+
+# Supabase free-tier projects auto-pause after about a week with no real
+# database activity. This does a genuine write (upsert) to a dedicated
+# keepalive row every day - never touches real league data.
+#
+# Requires two repo secrets once the Supabase project exists:
+#   SUPABASE_URL         e.g. https://xxxx.supabase.co
+#   SUPABASE_ANON_KEY     the project's publishable/anon key
+
+on:
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Write keep-alive ping row to Supabase
+        run: |
+          curl -sf -X POST "${{ secrets.SUPABASE_URL }}/rest/v1/keepalive?on_conflict=id" \
+            -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}" \
+            -H "Content-Type: application/json" \
+            -H "Prefer: resolution=merge-duplicates,return=minimal" \
+            -d "{\"id\":1,\"pinged_at\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}"
