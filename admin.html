@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="style.css?v=8">
 </head>
 <body>
 
@@ -23,14 +23,17 @@
 
 <main class="container" id="app"></main>
 
-<script src="config.js"></script>
-<script src="db.js"></script>
-<script src="state.js"></script>
-<script src="render.js"></script>
-<script src="fixtures.js"></script>
-<script src="standings.js"></script>
-<script src="playoffs.js"></script>
-<script src="results.js"></script>
-<script src="admin.js"></script>
+<!-- Bump ?v=N on every script/css tag here and in team.html whenever any of
+     these files change - mobile Safari in particular caches them stubbornly
+     across plain reloads, so a version bump is the reliable cache-bust. -->
+<script src="config.js?v=8"></script>
+<script src="db.js?v=8"></script>
+<script src="state.js?v=8"></script>
+<script src="render.js?v=8"></script>
+<script src="fixtures.js?v=8"></script>
+<script src="standings.js?v=8"></script>
+<script src="playoffs.js?v=8"></script>
+<script src="results.js?v=8"></script>
+<script src="admin.js?v=8"></script>
 </body>
 </html>
