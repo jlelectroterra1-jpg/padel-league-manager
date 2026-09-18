@@ -43,5 +43,19 @@
     return out;
   }
 
-  window.Render = { el, formatDate, badge, qs, genAccessCode };
+  // "6-4, 3-6, 6-2" from a result's 3 set score columns. Pass swapTeams=true
+  // to show team2's score first each set (e.g. so a team viewing their own
+  // dashboard sees "my score - opponent score" regardless of which side of
+  // the fixture they were stored as).
+  function formatSets(result, swapTeams) {
+    return [1, 2, 3]
+      .map((n) => {
+        const a = result[`set${n}_team1_score`];
+        const b = result[`set${n}_team2_score`];
+        return swapTeams ? `${b}-${a}` : `${a}-${b}`;
+      })
+      .join(", ");
+  }
+
+  window.Render = { el, formatDate, badge, qs, genAccessCode, formatSets };
 })();

@@ -84,9 +84,6 @@
     const startDate = el("input", { class: "input", type: "date" });
     const numTeams = el("input", { class: "input", type: "number", min: "6", value: "10" });
     const numCourts = el("input", { class: "input", type: "number", min: "1", value: "2" });
-    const winPts = el("input", { class: "input", type: "number", value: "3" });
-    const drawPts = el("input", { class: "input", type: "number", value: "1" });
-    const lossPts = el("input", { class: "input", type: "number", value: "0" });
     const playoffSize = el("select", { class: "input" }, [
       el("option", { value: "8" }, "Top 8 (quarter-finals)"),
       el("option", { value: "4" }, "Top 4 (semi-finals)"),
@@ -100,11 +97,7 @@
       field("Description", description),
       el("div", { class: "field-row" }, [field("Start date", startDate), field("Number of teams", numTeams)]),
       el("div", { class: "field-row" }, [field("Number of courts", numCourts), field("Playoff format", playoffSize)]),
-      el("div", { class: "field-row three" }, [
-        field("Points per win", winPts),
-        field("Points per draw", drawPts),
-        field("Points per loss", lossPts)
-      ]),
+      el("p", { class: "muted small" }, "Every match is 3 sets - each set won is worth 1 league point."),
       error,
       el("button", { class: "btn btn-primary", type: "submit" }, "Create league")
     ]);
@@ -122,7 +115,6 @@
         start_date: startDate.value || null,
         num_teams: Number(numTeams.value) || null,
         num_courts: Number(numCourts.value) || 1,
-        scoring_config: { win: Number(winPts.value) || 0, draw: Number(drawPts.value) || 0, loss: Number(lossPts.value) || 0 },
         playoff_size: Number(playoffSize.value),
         status: "draft"
       });
@@ -234,7 +226,7 @@
     if (!teams.length) {
       return el("div", { class: "card" }, el("p", { class: "empty-state" }, "Add teams to see a league table."));
     }
-    const rows = window.Standings.computeStandings(teams, fixtures, results, league.scoring_config);
+    const rows = window.Standings.computeStandings(teams, fixtures, results);
     return el("div", { class: "card" }, [el("h3", {}, "League table"), standingsTable(rows)]);
   }
 
@@ -245,9 +237,8 @@
       el("span", {}, "P"),
       el("span", {}, "W"),
       el("span", {}, "L"),
-      el("span", {}, "PF"),
-      el("span", {}, "PA"),
-      el("span", {}, "DIFF"),
+      el("span", {}, "SW"),
+      el("span", {}, "SL"),
       el("span", {}, "PTS")
     ]);
     const rowEls = rows.map((r) =>
@@ -257,9 +248,8 @@
         el("span", {}, String(r.played)),
         el("span", {}, String(r.won)),
         el("span", {}, String(r.lost)),
-        el("span", {}, String(r.pf)),
-        el("span", {}, String(r.pa)),
-        el("span", {}, r.diff > 0 ? `+${r.diff}` : String(r.diff)),
+        el("span", {}, String(r.setsWon)),
+        el("span", {}, String(r.setsLost)),
         el("span", { class: "standings-pts" }, String(r.pts))
       ])
     );
@@ -282,7 +272,7 @@
         const r = window.Results.activeResultForFixture(f.id, results);
         return !r || r.confirmation_status !== "confirmed";
       }).length;
-      const standings = window.Standings.computeStandings(teams.filter((t) => t.active), fixtures, results, league.scoring_config);
+      const standings = window.Standings.computeStandings(teams.filter((t) => t.active), fixtures, results);
       const qualifyCount = Math.min(league.playoff_size || 8, standings.length);
 
       return el("div", { class: "stack" }, [
@@ -366,10 +356,10 @@
     ]);
 
     if (canEnter && !result && enterScoreFixtures.has(fixture.id)) {
-      return el("div", { class: "fixture-block" }, [row, overrideForm(fixture, null)]);
+      return el("div", { class: "fixture-block" }, [row, overrideForm(fixture, null, false, teamsById)]);
     }
     if (canEnter && result && overrideForms.has(result.id)) {
-      return el("div", { class: "fixture-block" }, [row, overrideForm(fixture, result)]);
+      return el("div", { class: "fixture-block" }, [row, overrideForm(fixture, result, false, teamsById)]);
     }
     return row;
   }
@@ -380,7 +370,8 @@
     if (!final || !result || result.confirmation_status !== "confirmed") {
       return el("div", { class: "card" }, el("p", { class: "muted" }, "Champion will show here once the final is confirmed."));
     }
-    const championId = result.team1_score > result.team2_score ? final.team1_id : final.team2_id;
+    const sw = window.Standings.setsWon(result);
+    const championId = sw.team1 >= 2 ? final.team1_id : final.team2_id;
     const champion = teamsById[championId];
     return el("div", { class: "card champion-card" }, [
       el("div", {}, "🏆 LEAGUE CHAMPIONS"),
@@ -650,7 +641,7 @@
               : null
           ]);
           if (!result && enterScoreFixtures.has(f.id)) {
-            return el("div", { class: "fixture-block" }, [row, overrideForm(f, null)]);
+            return el("div", { class: "fixture-block" }, [row, overrideForm(f, null, false, teamsById)]);
           }
           return row;
         })
@@ -666,7 +657,8 @@
 
   function resultBadge(result) {
     if (!result) return null;
-    const score = `${result.team1_score}-${result.team2_score}`;
+    const sw = window.Standings.setsWon(result);
+    const score = `${sw.team1}-${sw.team2}`;
     if (result.confirmation_status === "confirmed") return badge(`${score} confirmed`, "green");
     if (result.confirmation_status === "disputed") return badge(`${score} disputed`, "amber");
     return badge(`${score} pending`, "blue");
@@ -704,17 +696,19 @@
         const fixture = fixturesById[result.fixture_id];
         if (!fixture) return null;
         const submittedBy = teamsById[result.submitted_by_team_id];
+        const sw = window.Standings.setsWon(result);
         return el("div", { class: "card" }, [
           el("div", { class: "fixture-row" }, [
             el("span", { class: "court-tag" }, `Week ${fixture.week}`),
-            el("strong", {}, `${teamName(fixture.team1_id, teamsById)} ${result.team1_score} - ${result.team2_score} ${teamName(fixture.team2_id, teamsById)}`)
+            el("strong", {}, `${teamName(fixture.team1_id, teamsById)} ${sw.team1} - ${sw.team2} ${teamName(fixture.team2_id, teamsById)}`)
           ]),
+          el("p", { class: "muted small" }, `Sets: ${window.Render.formatSets(result)}`),
           el("p", { class: "muted small" }, `Submitted by ${submittedBy ? submittedBy.name : "unknown team"}`),
           el("div", { class: "row-actions" }, [
             el("button", { class: "btn btn-primary small", type: "button", onclick: () => forceConfirm(result) }, "Force confirm"),
             el("button", { class: "btn btn-ghost small", type: "button", onclick: () => toggleOverride(result.id) }, "Correct score")
           ]),
-          overrideForms.has(result.id) ? overrideForm(fixture, result) : null
+          overrideForms.has(result.id) ? overrideForm(fixture, result, false, teamsById) : null
         ]);
       })
     );
@@ -742,14 +736,16 @@
       disputed.map((result) => {
         const fixture = fixturesById[result.fixture_id];
         if (!fixture) return null;
+        const sw = window.Standings.setsWon(result);
         return el("div", { class: "card" }, [
           el("div", { class: "fixture-row" }, [
             el("span", { class: "court-tag" }, `Week ${fixture.week}`),
-            el("strong", {}, `${teamName(fixture.team1_id, teamsById)} ${result.team1_score} - ${result.team2_score} ${teamName(fixture.team2_id, teamsById)}`),
+            el("strong", {}, `${teamName(fixture.team1_id, teamsById)} ${sw.team1} - ${sw.team2} ${teamName(fixture.team2_id, teamsById)}`),
             badge("disputed", "amber")
           ]),
+          el("p", { class: "muted small" }, `Sets: ${window.Render.formatSets(result)}`),
           result.dispute_reason ? el("p", { class: "muted small" }, `Reason given: ${result.dispute_reason}`) : null,
-          overrideForm(fixture, result, true)
+          overrideForm(fixture, result, true, teamsById)
         ]);
       })
     );
@@ -763,25 +759,48 @@
     render();
   }
 
-  function overrideForm(fixture, oldResult, alwaysOpen) {
-    const score1 = el("input", { class: "input", type: "number", min: "0", value: oldResult ? oldResult.team1_score : 0 });
-    const score2 = el("input", { class: "input", type: "number", min: "0", value: oldResult ? oldResult.team2_score : 0 });
+  function overrideForm(fixture, oldResult, alwaysOpen, teamsById) {
+    const name1 = teamName(fixture.team1_id, teamsById);
+    const name2 = teamName(fixture.team2_id, teamsById);
+    const setRows = [1, 2, 3].map((n) => ({
+      team1: el("input", {
+        class: "input",
+        type: "number",
+        min: "0",
+        value: oldResult ? oldResult[`set${n}_team1_score`] : ""
+      }),
+      team2: el("input", {
+        class: "input",
+        type: "number",
+        min: "0",
+        value: oldResult ? oldResult[`set${n}_team2_score`] : ""
+      })
+    }));
     const error = el("p", { class: "form-error", hidden: true });
 
     const form = el("form", { class: alwaysOpen ? "" : "inline-form" }, [
-      el("div", { class: "field-row" }, [field("Score 1", score1), field("Score 2", score2)]),
+      ...setRows.map((row, i) => el("div", { class: "field-row" }, [field(`Set ${i + 1} - ${name1}`, row.team1), field(`Set ${i + 1} - ${name2}`, row.team2)])),
       error,
       el("button", { class: "btn btn-primary small", type: "submit" }, oldResult ? "Save correct score" : "Save score")
     ]);
 
     form.addEventListener("submit", async (e) => {
       e.preventDefault();
-      if (score1.value === "" || score2.value === "") {
+      const team1Sets = setRows.map((r) => r.team1.value);
+      const team2Sets = setRows.map((r) => r.team2.value);
+      if (team1Sets.some((v) => v === "") || team2Sets.some((v) => v === "")) {
         error.hidden = false;
-        error.textContent = "Enter both scores.";
+        error.textContent = "Enter all 3 sets for both teams.";
         return;
       }
-      await window.Results.adminSetResult(fixture, oldResult, Number(score1.value), Number(score2.value));
+      const t1 = team1Sets.map(Number);
+      const t2 = team2Sets.map(Number);
+      if (t1.some((v, i) => v === t2[i])) {
+        error.hidden = false;
+        error.textContent = "A set can't be tied - one team must win each set.";
+        return;
+      }
+      await window.Results.adminSetResult(fixture, oldResult, t1, t2);
       if (oldResult) overrideForms.delete(oldResult.id);
       else enterScoreFixtures.delete(fixture.id);
       render();
@@ -797,9 +816,6 @@
     const description = el("input", { class: "input", value: league.description || "" });
     const startDate = el("input", { class: "input", type: "date", value: league.start_date || "" });
     const numCourts = el("input", { class: "input", type: "number", min: "1", value: league.num_courts || 1 });
-    const winPts = el("input", { class: "input", type: "number", value: league.scoring_config?.win ?? 3 });
-    const drawPts = el("input", { class: "input", type: "number", value: league.scoring_config?.draw ?? 1 });
-    const lossPts = el("input", { class: "input", type: "number", value: league.scoring_config?.loss ?? 0 });
     const saved = el("span", { class: "save-confirm", hidden: true }, "Saved");
 
     const form = el("form", { class: "card" }, [
@@ -807,7 +823,6 @@
       field("League name", name),
       field("Description", description),
       el("div", { class: "field-row" }, [field("Start date", startDate), field("Number of courts", numCourts)]),
-      el("div", { class: "field-row three" }, [field("Points per win", winPts), field("Points per draw", drawPts), field("Points per loss", lossPts)]),
       el("div", { class: "field-row", style: "align-items:center;" }, [
         el("button", { class: "btn btn-primary", type: "submit" }, "Save changes"),
         saved
@@ -820,8 +835,7 @@
         name: name.value.trim(),
         description: description.value.trim() || null,
         start_date: startDate.value || null,
-        num_courts: Number(numCourts.value) || 1,
-        scoring_config: { win: Number(winPts.value) || 0, draw: Number(drawPts.value) || 0, loss: Number(lossPts.value) || 0 }
+        num_courts: Number(numCourts.value) || 1
       });
       saved.hidden = false;
       setTimeout(() => (saved.hidden = true), 1500);

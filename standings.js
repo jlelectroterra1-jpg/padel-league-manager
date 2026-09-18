@@ -2,6 +2,12 @@
 // confirmed, non-superseded results; never stored as running totals, so a
 // corrected result (see results.js) automatically produces correct standings
 // on the next render with no separate "recalculate" step.
+//
+// Scoring: every match is 3 sets. Each set a team wins is worth 1 league
+// point, so a team's total points ARE its total sets won across all played
+// matches - there's no separate configurable win/draw/loss points system.
+// A match is a win for whichever team takes at least 2 of the 3 sets; there
+// are no draws.
 (function (root) {
   // Defensive dedup: under correct app usage there's at most one
   // non-superseded confirmed result per fixture, but this guards standings
@@ -19,11 +25,29 @@
     return map;
   }
 
-  function computeStandings(teams, fixtures, results, scoringConfig) {
-    const cfg = Object.assign({ win: 3, draw: 1, loss: 0 }, scoringConfig || {});
+  // Counts sets won per team from a result's 3 set scores. A tied set score
+  // shouldn't happen (score entry rejects ties), but counts for neither side
+  // if it ever does rather than throwing.
+  function setsWon(result) {
+    const sets = [
+      [result.set1_team1_score, result.set1_team2_score],
+      [result.set2_team1_score, result.set2_team2_score],
+      [result.set3_team1_score, result.set3_team2_score]
+    ];
+    let team1 = 0;
+    let team2 = 0;
+    sets.forEach(([a, b]) => {
+      if (a == null || b == null) return;
+      if (a > b) team1++;
+      else if (b > a) team2++;
+    });
+    return { team1, team2 };
+  }
+
+  function computeStandings(teams, fixtures, results) {
     const table = {};
     teams.forEach((t) => {
-      table[t.id] = { team: t, played: 0, won: 0, lost: 0, drawn: 0, pf: 0, pa: 0, pts: 0 };
+      table[t.id] = { team: t, played: 0, won: 0, lost: 0, setsWon: 0, setsLost: 0, pts: 0 };
     });
 
     const fixtureById = Object.fromEntries(fixtures.map((f) => [f.id, f]));
@@ -34,38 +58,32 @@
       const t2 = table[fx.team2_id];
       if (!t1 || !t2) return;
 
+      const sw = setsWon(r);
       t1.played++;
       t2.played++;
-      t1.pf += r.team1_score;
-      t1.pa += r.team2_score;
-      t2.pf += r.team2_score;
-      t2.pa += r.team1_score;
+      t1.setsWon += sw.team1;
+      t1.setsLost += sw.team2;
+      t2.setsWon += sw.team2;
+      t2.setsLost += sw.team1;
+      t1.pts += sw.team1;
+      t2.pts += sw.team2;
 
-      if (r.team1_score > r.team2_score) {
+      if (sw.team1 >= 2) {
         t1.won++;
-        t1.pts += cfg.win;
         t2.lost++;
-        t2.pts += cfg.loss;
-      } else if (r.team2_score > r.team1_score) {
+      } else if (sw.team2 >= 2) {
         t2.won++;
-        t2.pts += cfg.win;
         t1.lost++;
-        t1.pts += cfg.loss;
-      } else {
-        t1.drawn++;
-        t2.drawn++;
-        t1.pts += cfg.draw;
-        t2.pts += cfg.draw;
       }
     });
 
-    const rows = Object.values(table).map((row) => ({ ...row, diff: row.pf - row.pa }));
-    rows.sort((a, b) => b.pts - a.pts || b.diff - a.diff || b.pf - a.pf || a.team.name.localeCompare(b.team.name));
+    const rows = Object.values(table).map((row) => ({ ...row, diff: row.setsWon - row.setsLost }));
+    rows.sort((a, b) => b.pts - a.pts || b.diff - a.diff || b.setsWon - a.setsWon || a.team.name.localeCompare(b.team.name));
     rows.forEach((row, i) => (row.position = i + 1));
     return rows;
   }
 
-  const Standings = { computeStandings };
+  const Standings = { computeStandings, setsWon };
   if (typeof module !== "undefined" && module.exports) module.exports = Standings;
   else root.Standings = Standings;
 })(typeof window !== "undefined" ? window : globalThis);

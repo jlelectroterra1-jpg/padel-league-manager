@@ -87,7 +87,7 @@
     const allTeams = Object.values(teamsById);
     app.innerHTML = "";
 
-    const standings = window.Standings.computeStandings(allTeams, fixtures, results, league ? league.scoring_config : null);
+    const standings = window.Standings.computeStandings(allTeams, fixtures, results);
     const myRow = standings.find((r) => r.team.id === team.id);
     const next = window.Fixtures.nextFixtureForTeam(team.id, fixtures, results);
     const nextOpp = next ? (next.team1_id === team.id ? next.team2_id : next.team1_id) : null;
@@ -164,7 +164,8 @@
     const final = fixtures.find((f) => f.stage === "F");
     const result = final ? window.Results.activeResultForFixture(final.id, results) : null;
     if (!final || !result || result.confirmation_status !== "confirmed") return null;
-    const championId = result.team1_score > result.team2_score ? final.team1_id : final.team2_id;
+    const sw = window.Standings.setsWon(result);
+    const championId = sw.team1 >= 2 ? final.team1_id : final.team2_id;
     const champion = teamsById[championId];
     if (!champion) return null;
     return el("div", { class: "card champion-card" }, [
@@ -191,9 +192,8 @@
       el("span", {}, "P"),
       el("span", {}, "W"),
       el("span", {}, "L"),
-      el("span", {}, "PF"),
-      el("span", {}, "PA"),
-      el("span", {}, "DIFF"),
+      el("span", {}, "SW"),
+      el("span", {}, "SL"),
       el("span", {}, "PTS")
     ]);
     const rowEls = rows.map((r) =>
@@ -203,9 +203,8 @@
         el("span", {}, String(r.played)),
         el("span", {}, String(r.won)),
         el("span", {}, String(r.lost)),
-        el("span", {}, String(r.pf)),
-        el("span", {}, String(r.pa)),
-        el("span", {}, r.diff > 0 ? `+${r.diff}` : String(r.diff)),
+        el("span", {}, String(r.setsWon)),
+        el("span", {}, String(r.setsLost)),
         el("span", { class: "standings-pts" }, String(r.pts))
       ])
     );
@@ -243,27 +242,30 @@
       ]);
     }
 
-    const myScore = isTeam1 ? result.team1_score : result.team2_score;
-    const oppScore = isTeam1 ? result.team2_score : result.team1_score;
-    const scoreText = `${myScore}-${oppScore}`;
+    const sw = window.Standings.setsWon(result);
+    const myWon = isTeam1 ? sw.team1 : sw.team2;
+    const oppWon = isTeam1 ? sw.team2 : sw.team1;
+    const scoreText = `${myWon}-${oppWon}`;
+    const setDetail = el("p", { class: "muted small" }, `Sets: ${window.Render.formatSets(result, !isTeam1)}`);
 
     if (result.confirmation_status === "confirmed") {
-      return el("div", { class: "fixture-row" }, [...base, window.Render.badge(`${scoreText} confirmed`, "green")]);
+      return el("div", { class: "fixture-block" }, [el("div", { class: "fixture-row" }, [...base, window.Render.badge(`${scoreText} confirmed`, "green")]), setDetail]);
     }
 
     if (result.confirmation_status === "disputed") {
-      return el("div", { class: "fixture-row" }, [...base, window.Render.badge(`${scoreText} disputed`, "amber")]);
+      return el("div", { class: "fixture-block" }, [el("div", { class: "fixture-row" }, [...base, window.Render.badge(`${scoreText} disputed`, "amber")]), setDetail]);
     }
 
     // pending
     const iSubmitted = result.submitted_by_team_id === team.id;
     if (iSubmitted) {
-      return el("div", { class: "fixture-row" }, [...base, window.Render.badge(`${scoreText} awaiting confirmation`, "blue")]);
+      return el("div", { class: "fixture-block" }, [el("div", { class: "fixture-row" }, [...base, window.Render.badge(`${scoreText} awaiting confirmation`, "blue")]), setDetail]);
     }
 
     const disputeReason = el("input", { class: "input", placeholder: "Optional reason for admin" });
     return el("div", { class: "fixture-block" }, [
       el("div", { class: "fixture-row" }, [...base, el("strong", {}, scoreText)]),
+      setDetail,
       el("div", { class: "row-actions" }, [
         el("button", { class: "btn btn-primary small", type: "button", onclick: () => doConfirm(result) }, "Confirm result"),
         el("button", { class: "btn btn-danger small", type: "button", onclick: () => doDispute(result, disputeReason.value) }, "Dispute result")
@@ -273,24 +275,35 @@
   }
 
   function submitForm(fixture, isTeam1, oppName) {
-    const myScore = el("input", { class: "input", type: "number", min: "0", placeholder: "Your score" });
-    const oppScore = el("input", { class: "input", type: "number", min: "0", placeholder: `${oppName}'s score` });
+    const setRows = [1, 2, 3].map((n) => ({
+      my: el("input", { class: "input", type: "number", min: "0", placeholder: "Your score" }),
+      opp: el("input", { class: "input", type: "number", min: "0", placeholder: `${oppName}'s score` })
+    }));
     const error = el("p", { class: "form-error", hidden: true });
 
     const form = el("form", { class: "card inline-form" }, [
-      el("div", { class: "field-row" }, [field("Your score", myScore), field(`${oppName}'s score`, oppScore)]),
+      ...setRows.map((row, i) => el("div", { class: "field-row" }, [field(`Set ${i + 1} - your score`, row.my), field(`Set ${i + 1} - ${oppName}'s score`, row.opp)])),
       error,
       el("button", { class: "btn btn-primary small", type: "submit" }, "Submit result")
     ]);
 
     form.addEventListener("submit", async (e) => {
       e.preventDefault();
-      if (myScore.value === "" || oppScore.value === "") {
+      const mySets = setRows.map((r) => r.my.value);
+      const oppSets = setRows.map((r) => r.opp.value);
+      if (mySets.some((v) => v === "") || oppSets.some((v) => v === "")) {
         error.hidden = false;
-        error.textContent = "Enter both scores.";
+        error.textContent = "Enter all 3 sets.";
         return;
       }
-      await window.Results.submitResult(fixture, ctx.team.id, Number(myScore.value), Number(oppScore.value));
+      const my = mySets.map(Number);
+      const opp = oppSets.map(Number);
+      if (my.some((v, i) => v === opp[i])) {
+        error.hidden = false;
+        error.textContent = "A set can't be tied - one team must win each set.";
+        return;
+      }
+      await window.Results.submitResult(fixture, ctx.team.id, my, opp);
       openSubmitForms.delete(fixture.id);
       await loadAndRender(ctx.team.access_code);
     });

@@ -10,7 +10,6 @@ create table leagues (
   start_date date,
   num_teams int,
   num_courts int not null default 1,
-  scoring_config jsonb not null default '{"win":3,"draw":1,"loss":0}',
   playoff_size int not null default 8,
   status text not null default 'draft' check (status in ('draft','active','playoffs','completed','archived')),
   created_at timestamptz not null default now()
@@ -47,8 +46,14 @@ create table fixtures (
 create table results (
   id uuid primary key default gen_random_uuid(),
   fixture_id uuid not null references fixtures(id) on delete cascade,
-  team1_score int not null,
-  team2_score int not null,
+  -- Every match is 3 sets; a team's league points ARE its sets won, summed
+  -- across all matches (see standings.js) - never stored as a running total.
+  set1_team1_score int not null,
+  set1_team2_score int not null,
+  set2_team1_score int not null,
+  set2_team2_score int not null,
+  set3_team1_score int not null,
+  set3_team2_score int not null,
   submitted_by_team_id uuid references teams(id) on delete set null,
   submitted_at timestamptz not null default now(),
   confirmation_status text not null default 'pending' check (confirmation_status in ('pending','confirmed','disputed')),

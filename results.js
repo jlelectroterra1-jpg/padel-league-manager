@@ -1,6 +1,10 @@
 // Write-path orchestration for match results: submit -> confirm/dispute ->
 // (if disputed) admin correction. Uses db.js for persistence; no DOM here.
 //
+// Every match is 3 sets, entered as [set1, set2, set3] score arrays per
+// team. Which team "won" a set/match is always derived from those raw
+// scores (see standings.js's setsWon) - never stored as a separate flag.
+//
 // History rule: a result row is NEVER updated to change its score. Correcting
 // one (admin_override) marks the old row superseded=true and inserts a new
 // confirmed row instead - this is what lets standings always be recomputed
@@ -8,14 +12,24 @@
 (function (root) {
   const { dbInsert, dbUpdate, dbList, dbGet } = window.DB;
 
-  async function submitResult(fixture, submittingTeamId, myScore, oppScore) {
+  function setColumns(team1Sets, team2Sets) {
+    return {
+      set1_team1_score: team1Sets[0],
+      set1_team2_score: team2Sets[0],
+      set2_team1_score: team1Sets[1],
+      set2_team2_score: team2Sets[1],
+      set3_team1_score: team1Sets[2],
+      set3_team2_score: team2Sets[2]
+    };
+  }
+
+  async function submitResult(fixture, submittingTeamId, mySets, oppSets) {
     const isTeam1 = fixture.team1_id === submittingTeamId;
-    const team1_score = isTeam1 ? myScore : oppScore;
-    const team2_score = isTeam1 ? oppScore : myScore;
+    const team1Sets = isTeam1 ? mySets : oppSets;
+    const team2Sets = isTeam1 ? oppSets : mySets;
     return dbInsert("results", {
       fixture_id: fixture.id,
-      team1_score,
-      team2_score,
+      ...setColumns(team1Sets, team2Sets),
       submitted_by_team_id: submittingTeamId,
       confirmation_status: "pending",
       admin_override: false,
@@ -43,7 +57,7 @@
     });
   }
 
-  async function adminSetResult(fixture, oldResult, team1_score, team2_score) {
+  async function adminSetResult(fixture, oldResult, team1Sets, team2Sets) {
     // Supersede every currently-active result for this fixture, not just the
     // one the caller thinks is active - keeps "at most one live result per
     // fixture" true even if the caller's view of the world was stale.
@@ -51,8 +65,7 @@
     for (const r of existing.filter((r) => !r.superseded)) await dbUpdate("results", r.id, { superseded: true });
     const saved = await dbInsert("results", {
       fixture_id: fixture.id,
-      team1_score,
-      team2_score,
+      ...setColumns(team1Sets, team2Sets),
       submitted_by_team_id: null,
       confirmation_status: "confirmed",
       confirmed_at: new Date().toISOString(),
@@ -72,12 +85,8 @@
     if (!fixture || fixture.stage === "league") return;
 
     if (fixture.next_fixture_id) {
-      const winnerId =
-        result.team1_score === result.team2_score
-          ? null
-          : result.team1_score > result.team2_score
-          ? fixture.team1_id
-          : fixture.team2_id;
+      const sw = window.Standings.setsWon(result);
+      const winnerId = sw.team1 >= 2 ? fixture.team1_id : sw.team2 >= 2 ? fixture.team2_id : null;
       if (winnerId) {
         const patch = fixture.next_slot === 2 ? { team2_id: winnerId } : { team1_id: winnerId };
         await dbUpdate("fixtures", fixture.next_fixture_id, patch);
