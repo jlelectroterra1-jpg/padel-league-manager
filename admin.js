@@ -171,9 +171,9 @@
       teams: "Teams",
       fixtures: "Fixtures",
       standings: "Standings",
-      playoffs: "Playoffs",
       confirmations: `Confirmations${pendingCount ? ` (${pendingCount})` : ""}`,
       disputes: `Disputes${disputedCount ? ` (${disputedCount})` : ""}`,
+      playoffs: "Playoffs",
       settings: "Settings"
     };
 
