@@ -429,7 +429,7 @@
         el("button", { class: "btn btn-ghost small", type: "button", onclick: () => toggleEdit(team.id) }, "Edit"),
         el("button", { class: "btn btn-ghost small", type: "button", onclick: () => toggleExpand(team.id) }, expanded ? "Hide fixtures" : "Fixtures"),
         el("button", { class: "btn btn-ghost small", type: "button", onclick: () => toggleActive(team) }, team.active ? "Mark inactive" : "Mark active"),
-        el("button", { class: "btn btn-danger small", type: "button", onclick: () => removeTeam(team) }, "Delete")
+        el("button", { class: "btn btn-danger small", type: "button", onclick: () => removeTeam(team, fixtures) }, "Delete")
       ])
     ]);
 
@@ -559,9 +559,22 @@
     render();
   }
 
-  async function removeTeam(team) {
+  async function removeTeam(team, fixtures) {
+    const hasFixtures = fixtures.some((f) => f.team1_id === team.id || f.team2_id === team.id);
+    if (hasFixtures) {
+      alert(
+        `${team.name} already has fixtures/results in this league, so it can't be deleted outright (that would leave holes in other teams' schedules). ` +
+          `Use "Mark inactive" instead to remove them from future scheduling while keeping their history intact - or, if you really want them gone, delete the whole league's fixtures first (Fixtures tab → Regenerate) then delete the team.`
+      );
+      return;
+    }
     if (!confirm(`Delete ${team.name}? This can't be undone.`)) return;
-    await dbDelete("teams", team.id);
+    try {
+      await dbDelete("teams", team.id);
+    } catch (err) {
+      alert(`Couldn't delete ${team.name}: ${err.message || err}`);
+      return;
+    }
     render();
   }
 
