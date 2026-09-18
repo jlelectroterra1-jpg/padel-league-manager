@@ -91,7 +91,10 @@ body{
     border-radius:var(--radius-sm);
     color:var(--text);
     padding:10px 12px;
-    font-size:14px;
+    /* 16px minimum - iOS Safari auto-zooms the whole page on focus for any
+       input with a smaller computed font-size, which reads as a jarring
+       unwanted jump/zoom the instant you tap a score field. */
+    font-size:16px;
     font-family:var(--font-body);
     width:100%;
     height:44px;
@@ -110,6 +113,7 @@ body{
     color:var(--text);
     border-radius:999px;
     padding:10px 18px;
+    min-height:44px;
     font-weight:700;
     font-size:13.5px;
     cursor:pointer;
@@ -124,7 +128,11 @@ body{
 }
 .btn-danger{ border-color:rgba(239,68,68,0.4); color:#ffb4b4; background:rgba(239,68,68,0.08); }
 .btn-ghost{ background:transparent; }
-.btn.small{ padding:6px 12px; font-size:12.5px; }
+/* still comfortably tappable (~38px) despite the "small" label - these sit
+   several to a row (Edit/Fixtures/Delete etc.), so they can't match the
+   44px full-size minimum without breaking that layout, but the old 27px was
+   too cramped for a thumb on a real phone. */
+.btn.small{ padding:8px 14px; min-height:38px; font-size:12.5px; }
 
 /* leagues list */
 .league-row{
@@ -196,17 +204,19 @@ body{
 
 /* stats strip */
 .stats-strip{
-    display:grid; grid-template-columns:repeat(auto-fit, minmax(84px, 1fr)); gap:8px;
+    display:grid; grid-template-columns:repeat(auto-fit, minmax(108px, 1fr)); gap:8px;
     margin-bottom:16px;
 }
 .stat-tile{
     background:var(--panel); border:1px solid var(--line-soft); border-radius:var(--radius-sm);
     padding:10px 8px; text-align:center;
 }
-.stat-value{ font-family:var(--font-display); font-weight:800; font-size:20px; }
+.stat-value{ font-family:var(--font-display); font-weight:800; font-size:18px; overflow-wrap:break-word; }
 .stat-label{ color:var(--muted); font-size:10.5px; text-transform:uppercase; letter-spacing:0.03em; margin-top:2px; }
 
-/* standings table */
+/* standings table - Pos/Team stay pinned while the stat columns scroll
+   underneath, so context (which row you're looking at) is never lost even
+   though all 8 columns can't fit on a narrow phone without some scroll. */
 .standings-table{ overflow-x:auto; }
 .standings-row{
     display:grid; grid-template-columns:32px 1fr 30px 30px 30px 40px 40px 48px;
@@ -214,7 +224,20 @@ body{
     border-bottom:1px solid var(--line-soft);
 }
 .standings-row:last-child{ border-bottom:none; }
+.standings-row > *:nth-child(1),
+.standings-row > *:nth-child(2){
+    position:sticky; z-index:1;
+    background:#141d30;
+}
+.standings-row > *:nth-child(1){ left:0; }
+.standings-row > *:nth-child(2){ left:32px; }
+.standings-me > *:nth-child(1),
+.standings-me > *:nth-child(2){
+    background:linear-gradient(rgba(45,212,191,0.08),rgba(45,212,191,0.08)), #141d30;
+}
 .standings-header{ color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:0.02em; font-weight:700; }
+.standings-header > *:nth-child(1),
+.standings-header > *:nth-child(2){ background:#111a2c; }
 .standings-team{ font-weight:700; display:flex; align-items:center; gap:4px; }
 .standings-pts{ font-weight:800; color:var(--brand); }
 .standings-me{ background:rgba(45,212,191,0.08); border-radius:8px; }
@@ -248,4 +271,6 @@ body{
     .app-header h1{ font-size:18px; }
     .field-row{ flex-direction:column; }
     .field-row > .field{ width:100%; }
+    .stat-value{ font-size:16px; }
+    .fixture-row{ flex-direction:column; align-items:flex-start; gap:6px; }
 }

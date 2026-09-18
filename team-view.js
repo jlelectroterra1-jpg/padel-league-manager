@@ -82,7 +82,12 @@
     render();
   }
 
+  // This is a single continuous page (no tabs/routing), so every render() is
+  // an in-place update from some action (toggling a score form, confirming a
+  // result) - always restore scroll position rather than letting a full DOM
+  // rebuild silently reset it to the top.
   function render() {
+    const scrollY = window.scrollY;
     const { team, league, teamsById, fixtures, results } = ctx;
     const allTeams = Object.values(teamsById);
     app.innerHTML = "";
@@ -158,6 +163,8 @@
     );
 
     app.appendChild(el("div", { class: "card" }, [el("h3", {}, "League table"), standingsTable(standings)]));
+
+    window.scrollTo(0, scrollY);
   }
 
   function championCard(fixtures, results, teamsById) {

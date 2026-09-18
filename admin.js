@@ -20,10 +20,21 @@
     location.hash = hash;
   }
 
-  window.addEventListener("hashchange", render);
+  // Navigating to a different tab/league is a real page change, so it resets
+  // scroll to the top like normal navigation would. An in-place re-render
+  // triggered by an action on the CURRENT view (toggling a section, saving a
+  // form, confirming a result) should not - render() always restores
+  // whatever scroll position was current when it was called, so a plain
+  // direct call from a toggle/submit handler naturally keeps the user where
+  // they were instead of the page jumping to the top.
+  window.addEventListener("hashchange", () => {
+    window.scrollTo(0, 0);
+    render();
+  });
   document.addEventListener("DOMContentLoaded", render);
 
   async function render() {
+    const scrollY = window.scrollY;
     const route = parseHash();
     app.innerHTML = "";
     app.appendChild(el("p", { class: "loading" }, "Loading..."));
@@ -41,6 +52,7 @@
         el("p", { class: "muted" }, String(err.message || err))
       ]));
     }
+    window.scrollTo(0, scrollY);
   }
 
   // ---------- Leagues list ----------
