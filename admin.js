@@ -6,6 +6,7 @@
 
   const app = document.getElementById("app");
   const expandedTeams = new Set();
+  const editingTeams = new Set();
 
   function parseHash() {
     const parts = location.hash.replace(/^#\/?/, "").split("/").filter(Boolean);
@@ -412,7 +413,12 @@
 
   function teamRow(league, team, allTeams, fixtures, teamsById, results) {
     const expanded = expandedTeams.has(team.id);
+    const editing = editingTeams.has(team.id);
     const link = `${location.origin}${location.pathname.replace(/admin\.html$/, "")}team.html?code=${team.access_code}`;
+
+    if (editing) {
+      return el("div", { class: "team-row" }, [editTeamForm(team)]);
+    }
 
     const header = el("div", { class: "team-row-header" }, [
       el("div", {}, [
@@ -420,6 +426,7 @@
         el("div", { class: "muted small" }, `${team.player1} + ${team.player2}`)
       ]),
       el("div", { class: "row-actions" }, [
+        el("button", { class: "btn btn-ghost small", type: "button", onclick: () => toggleEdit(team.id) }, "Edit"),
         el("button", { class: "btn btn-ghost small", type: "button", onclick: () => toggleExpand(team.id) }, expanded ? "Hide fixtures" : "Fixtures"),
         el("button", { class: "btn btn-ghost small", type: "button", onclick: () => toggleActive(team) }, team.active ? "Mark inactive" : "Mark active"),
         el("button", { class: "btn btn-danger small", type: "button", onclick: () => removeTeam(team) }, "Delete")
@@ -448,6 +455,46 @@
     }
 
     return el("div", { class: "team-row" }, children);
+  }
+
+  function toggleEdit(teamId) {
+    if (editingTeams.has(teamId)) editingTeams.delete(teamId);
+    else editingTeams.add(teamId);
+    render();
+  }
+
+  function editTeamForm(team) {
+    const name = el("input", { class: "input", value: team.name });
+    const player1 = el("input", { class: "input", value: team.player1 });
+    const player2 = el("input", { class: "input", value: team.player2 });
+    const error = el("p", { class: "form-error", hidden: true });
+
+    const form = el("form", {}, [
+      el("div", { class: "field-row three" }, [field("Team name", name), field("Player 1", player1), field("Player 2", player2)]),
+      error,
+      el("div", { class: "row-actions" }, [
+        el("button", { class: "btn btn-primary small", type: "submit" }, "Save"),
+        el("button", { class: "btn btn-ghost small", type: "button", onclick: () => toggleEdit(team.id) }, "Cancel")
+      ])
+    ]);
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      if (!name.value.trim() || !player1.value.trim() || !player2.value.trim()) {
+        error.hidden = false;
+        error.textContent = "Team name and both players are required.";
+        return;
+      }
+      await dbUpdate("teams", team.id, {
+        name: name.value.trim(),
+        player1: player1.value.trim(),
+        player2: player2.value.trim()
+      });
+      editingTeams.delete(team.id);
+      render();
+    });
+
+    return form;
   }
 
   function opponentList(title, entries, teamsById, icon) {
