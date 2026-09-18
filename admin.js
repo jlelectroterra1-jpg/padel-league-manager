@@ -403,11 +403,11 @@
     const teamsById = Object.fromEntries(teams.map((t) => [t.id, t]));
     const rows = teams.length
       ? teams.map((team) => teamRow(league, team, teams, fixtures, teamsById, results))
-      : [el("p", { class: "empty-state" }, "No teams yet - add your fixed pairs below.")];
+      : [el("p", { class: "empty-state" }, "No teams yet - add your fixed pairs above.")];
 
     return el("div", { class: "stack" }, [
-      el("div", { class: "card" }, [el("h3", {}, `Teams (${teams.length})`), el("div", { class: "stack" }, rows)]),
-      addTeamForm(league, teams)
+      addTeamForm(league, teams),
+      el("div", { class: "card" }, [el("h3", {}, `Teams (${teams.length})`), el("div", { class: "stack" }, rows)])
     ]);
   }
 
