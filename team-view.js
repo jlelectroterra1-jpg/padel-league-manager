@@ -120,6 +120,7 @@
           ? el("div", { class: "next-match" }, [
               el("div", { class: "label" }, "Next match"),
               el("div", { class: "opp" }, `vs ${teamsById[nextOpp] ? teamsById[nextOpp].name : "Unknown"}`),
+              teamsById[nextOpp] ? el("div", { class: "opp-players" }, `${teamsById[nextOpp].player1} & ${teamsById[nextOpp].player2}`) : null,
               el("div", { class: "muted small" }, `Week ${next.week}`)
             ])
           : null
@@ -232,11 +233,12 @@
     }
 
     const oppId = f.team1_id === team.id ? f.team2_id : f.team1_id;
-    const oppName = teamsById[oppId] ? teamsById[oppId].name : "Unknown";
+    const oppTeam = teamsById[oppId];
+    const oppName = oppTeam ? oppTeam.name : "Unknown";
     const result = window.Results.activeResultForFixture(f.id, results);
     const isTeam1 = f.team1_id === team.id;
 
-    const base = [el("span", { class: "court-tag" }, label), el("span", {}, `vs ${oppName}`)];
+    const base = [el("span", { class: "court-tag" }, label), opponentBlock(oppTeam, "vs ")];
 
     if (!result) {
       const open = openSubmitForms.has(f.id);
@@ -338,11 +340,27 @@
     await loadAndRender(ctx.team.access_code);
   }
 
+  // Team name stays prominent; both players from that team's existing
+  // record show underneath in smaller text - always read live from
+  // teamsById, never duplicated/stored separately, so a rename in the
+  // league is reflected here automatically.
+  function opponentBlock(team, prefix) {
+    if (!team) return el("span", {}, `${prefix || ""}Unknown`);
+    return el("div", { class: "opponent-block" }, [
+      el("div", { class: "opponent-block-name" }, `${prefix || ""}${team.name}`),
+      el("div", { class: "opponent-block-players" }, `${team.player1} & ${team.player2}`)
+    ]);
+  }
+
   function opponentList(title, entries, teamsById, icon) {
     return el("div", {}, [
       el("div", { class: "opponent-list-title" }, title),
       entries.length
-        ? el("ul", { class: "opponent-list" }, entries.map((e) => el("li", {}, `${icon} ${teamsById[e.opponentId] ? teamsById[e.opponentId].name : "Unknown"}`)))
+        ? el(
+            "ul",
+            { class: "opponent-list" },
+            entries.map((e) => el("li", {}, [el("span", { class: "opponent-list-icon" }, icon), opponentBlock(teamsById[e.opponentId])]))
+          )
         : el("p", { class: "muted small" }, "None")
     ]);
   }
