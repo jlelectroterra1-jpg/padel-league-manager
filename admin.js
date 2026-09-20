@@ -352,12 +352,10 @@
 
   function playoffMatchRow(fixture, results, teamsById) {
     const result = window.Results.activeResultForFixture(fixture.id, results);
-    const name1 = fixture.team1_id ? teamName(fixture.team1_id, teamsById) : "TBD";
-    const name2 = fixture.team2_id ? teamName(fixture.team2_id, teamsById) : "TBD";
     const canEnter = fixture.team1_id && fixture.team2_id;
 
     const row = el("div", { class: "fixture-row" }, [
-      el("span", {}, `${name1} vs ${name2}`),
+      matchup(teamsById[fixture.team1_id], teamsById[fixture.team2_id]),
       resultBadge(result),
       canEnter && !result
         ? el("button", { class: "btn btn-ghost small", type: "button", onclick: () => toggleEnterScore(fixture.id) }, enterScoreFixtures.has(fixture.id) ? "Cancel" : "Enter score")
@@ -507,7 +505,7 @@
         ? el(
             "ul",
             { class: "opponent-list" },
-            entries.map((e) => el("li", {}, `${icon} ${teamsById[e.opponentId] ? teamsById[e.opponentId].name : "Unknown"}`))
+            entries.map((e) => el("li", {}, [el("span", { class: "opponent-list-icon" }, icon), teamBlock(teamsById[e.opponentId])]))
           )
         : el("p", { class: "muted small" }, "None")
     ]);
@@ -638,11 +636,13 @@
         "div",
         { class: "stack" },
         matches.map((f) => {
-          if (f.status === "bye") return el("div", { class: "fixture-row muted" }, `${teamName(f.team1_id, teamsById)} has a bye`);
+          if (f.status === "bye") {
+            return el("div", { class: "fixture-row muted" }, [teamBlock(teamsById[f.team1_id]), el("span", {}, "has a bye")]);
+          }
           const result = window.Results.activeResultForFixture(f.id, results);
           const row = el("div", { class: "fixture-row" }, [
             el("span", { class: "court-tag" }, `Court ${f.court}${matches.length > 1 && f.time_slot > 1 ? ` · slot ${f.time_slot}` : ""}`),
-            el("span", {}, `${teamName(f.team1_id, teamsById)} vs ${teamName(f.team2_id, teamsById)}`),
+            matchup(teamsById[f.team1_id], teamsById[f.team2_id]),
             resultBadge(result),
             !result
               ? el(
@@ -680,6 +680,22 @@
     return teamsById[id] ? teamsById[id].name : "Unknown";
   }
 
+  // Team name stays prominent; both players from that team's existing
+  // record show underneath in smaller text - read live from teamsById,
+  // never duplicated, so a rename in Teams shows up immediately everywhere
+  // a fixture is displayed.
+  function teamBlock(team) {
+    if (!team) return el("span", {}, "TBD");
+    return el("div", { class: "opponent-block" }, [
+      el("div", { class: "opponent-block-name" }, team.name),
+      el("div", { class: "opponent-block-players" }, `${team.player1} & ${team.player2}`)
+    ]);
+  }
+
+  function matchup(team1, team2) {
+    return el("div", { class: "matchup" }, [teamBlock(team1), el("div", { class: "matchup-vs" }, "vs"), teamBlock(team2)]);
+  }
+
   async function generateFixtures(league, activeTeams, existingFixtures) {
     if (existingFixtures.length && !confirm("This replaces the current fixture list AND deletes any scores already recorded against it. Continue?")) return;
     for (const f of existingFixtures) await dbDelete("fixtures", f.id);
@@ -712,7 +728,8 @@
         return el("div", { class: "card" }, [
           el("div", { class: "fixture-row" }, [
             el("span", { class: "court-tag" }, `Week ${fixture.week}`),
-            el("strong", {}, `${teamName(fixture.team1_id, teamsById)} ${sw.team1} - ${sw.team2} ${teamName(fixture.team2_id, teamsById)}`)
+            matchup(teamsById[fixture.team1_id], teamsById[fixture.team2_id]),
+            el("strong", {}, `${sw.team1} - ${sw.team2}`)
           ]),
           el("p", { class: "muted small" }, `Sets: ${window.Render.formatSets(result)}`),
           el("p", { class: "muted small" }, `Submitted by ${submittedBy ? submittedBy.name : "unknown team"}`),
@@ -752,7 +769,8 @@
         return el("div", { class: "card" }, [
           el("div", { class: "fixture-row" }, [
             el("span", { class: "court-tag" }, `Week ${fixture.week}`),
-            el("strong", {}, `${teamName(fixture.team1_id, teamsById)} ${sw.team1} - ${sw.team2} ${teamName(fixture.team2_id, teamsById)}`),
+            matchup(teamsById[fixture.team1_id], teamsById[fixture.team2_id]),
+            el("strong", {}, `${sw.team1} - ${sw.team2}`),
             badge("disputed", "amber")
           ]),
           el("p", { class: "muted small" }, `Sets: ${window.Render.formatSets(result)}`),

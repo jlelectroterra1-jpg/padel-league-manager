@@ -191,6 +191,12 @@ body{
 
 .fixture-block{ display:flex; flex-direction:column; gap:8px; padding:8px 10px; border-radius:var(--radius-sm); background:rgba(255,255,255,0.02); }
 .fixture-block .fixture-row{ background:transparent; padding:0; }
+
+/* two-team matchup (admin's Fixtures/Playoffs/Confirmations/Disputes views,
+   which show both sides of a fixture rather than "vs opponent" from one
+   team's perspective) - reuses .opponent-block for each side. */
+.matchup{ display:flex; flex-direction:column; gap:4px; min-width:0; flex:1; }
+.matchup-vs{ color:var(--faint); font-size:10.5px; text-transform:uppercase; letter-spacing:0.04em; font-weight:700; }
 .inline-form{ margin:0; padding:12px; box-shadow:none; background:rgba(255,255,255,0.03); }
 .inline-form .field-row{ margin-bottom:8px; }
 
