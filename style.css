@@ -215,6 +215,29 @@ body{
 .opponent-block-players{ color:var(--muted); font-size:12px; overflow-wrap:break-word; }
 .opp-players{ color:var(--muted); font-size:13px; margin-top:2px; }
 
+/* compact 3-set score entry (team.html "Submit result") - a 2-row grid
+   (your team / opponent) x 3 columns (S1/S2/S3) instead of 6 full-width
+   stacked fields, so the whole score fits on screen without scrolling even
+   at 320px. The name column shrinks first (team/player text wraps via
+   .opponent-block) - the three score columns stay a fixed, comfortably
+   tappable width. */
+.score-grid{
+    display:grid; grid-template-columns:minmax(0,1fr) repeat(3, 44px);
+    column-gap:6px; row-gap:10px; align-items:center; margin-bottom:12px;
+}
+.score-grid-head{
+    text-align:center; font-size:10.5px; font-weight:800; text-transform:uppercase;
+    letter-spacing:0.03em; color:var(--muted);
+}
+.score-grid-team{ min-width:0; }
+.score-input{
+    width:100%; height:44px; padding:8px 2px; text-align:center;
+    font-size:16px; /* 16px minimum avoids iOS Safari's auto-zoom-on-focus */
+}
+.score-input::-webkit-outer-spin-button,
+.score-input::-webkit-inner-spin-button{ -webkit-appearance:none; margin:0; }
+.score-input{ -moz-appearance:textfield; }
+
 .team-hero{ text-align:center; }
 .team-hero h2{ margin:6px 0 2px; }
 
@@ -330,4 +353,9 @@ body{
     .field-row > .field{ width:100%; }
     .stat-value{ font-size:16px; }
     .fixture-row{ flex-direction:column; align-items:flex-start; gap:6px; }
+    /* narrow phones nest the score grid inside several padded cards, leaving
+       little room for the name column - trim the score columns a touch so
+       team/player names get enough width to wrap at word boundaries instead
+       of breaking mid-word. */
+    .score-grid{ grid-template-columns:minmax(0,1fr) repeat(3, 36px); column-gap:4px; }
 }

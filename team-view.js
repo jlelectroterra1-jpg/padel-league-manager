@@ -255,7 +255,6 @@
 
     const oppId = f.team1_id === team.id ? f.team2_id : f.team1_id;
     const oppTeam = teamsById[oppId];
-    const oppName = oppTeam ? oppTeam.name : "Unknown";
     const result = window.Results.activeResultForFixture(f.id, results);
     const isTeam1 = f.team1_id === team.id;
 
@@ -269,7 +268,7 @@
           el("button", { class: "btn btn-ghost small", type: "button", onclick: () => toggleSubmitForm(f.id) }, open ? "Cancel" : "Submit result")
         ]),
         opponentAvailabilitySummary(oppTeam, f.id),
-        open ? submitForm(f, isTeam1, oppName) : null
+        open ? submitForm(f, isTeam1, oppTeam) : null
       ]);
     }
 
@@ -305,23 +304,33 @@
     ]);
   }
 
-  function submitForm(fixture, isTeam1, oppName) {
-    const setRows = [1, 2, 3].map((n) => ({
-      my: el("input", { class: "input", type: "number", min: "0", placeholder: "Your score" }),
-      opp: el("input", { class: "input", type: "number", min: "0", placeholder: `${oppName}'s score` })
-    }));
+  // Compact 2-row x 3-column score grid (team down the side, S1/S2/S3 across
+  // the top) instead of 6 full-width stacked fields - the whole 3-set score
+  // is visible without scrolling, even at 320px. See .score-grid in
+  // style.css.
+  function submitForm(fixture, isTeam1, oppTeam) {
+    const myInputs = [1, 2, 3].map(() => scoreInput());
+    const oppInputs = [1, 2, 3].map(() => scoreInput());
+    wireEnterAdvance([...myInputs, ...oppInputs]);
     const error = el("p", { class: "form-error", hidden: true });
 
-    const form = el("form", { class: "card inline-form" }, [
-      ...setRows.map((row, i) => el("div", { class: "field-row" }, [field(`Set ${i + 1} - your score`, row.my), field(`Set ${i + 1} - ${oppName}'s score`, row.opp)])),
-      error,
-      el("button", { class: "btn btn-primary small", type: "submit" }, "Submit result")
+    const grid = el("div", { class: "score-grid" }, [
+      el("div", { class: "score-grid-label" }),
+      el("div", { class: "score-grid-head" }, "S1"),
+      el("div", { class: "score-grid-head" }, "S2"),
+      el("div", { class: "score-grid-head" }, "S3"),
+      el("div", { class: "score-grid-team" }, opponentBlock(ctx.team, "")),
+      ...myInputs,
+      el("div", { class: "score-grid-team" }, opponentBlock(oppTeam, "")),
+      ...oppInputs
     ]);
+
+    const form = el("form", { class: "card inline-form" }, [grid, error, el("button", { class: "btn btn-primary small", type: "submit" }, "Submit result")]);
 
     form.addEventListener("submit", async (e) => {
       e.preventDefault();
-      const mySets = setRows.map((r) => r.my.value);
-      const oppSets = setRows.map((r) => r.opp.value);
+      const mySets = myInputs.map((i) => i.value);
+      const oppSets = oppInputs.map((i) => i.value);
       if (mySets.some((v) => v === "") || oppSets.some((v) => v === "")) {
         error.hidden = false;
         error.textContent = "Enter all 3 sets.";
@@ -340,6 +349,25 @@
     });
 
     return form;
+  }
+
+  function scoreInput() {
+    return el("input", { class: "input score-input", type: "number", min: "0", inputmode: "numeric" });
+  }
+
+  // Enter/"Next" on a mobile numeric keypad moves to the next box instead of
+  // trying to submit the form early; the last box's key is left as "Done".
+  function wireEnterAdvance(inputs) {
+    inputs.forEach((input, i) => {
+      input.setAttribute("enterkeyhint", i < inputs.length - 1 ? "next" : "done");
+      input.addEventListener("keydown", (e) => {
+        if (e.key !== "Enter") return;
+        e.preventDefault();
+        const next = inputs[i + 1];
+        if (next) next.focus();
+        else input.blur();
+      });
+    });
   }
 
   function field(label, input) {
