@@ -261,13 +261,22 @@
     const base = [el("span", { class: "court-tag" }, label), opponentBlock(oppTeam, "vs ")];
 
     if (!result) {
+      // Submit result is the primary action on an unplayed fixture (filled
+      // teal, matching .btn-primary elsewhere), View availability is
+      // secondary/informational (outlined) - grouped together in one tidy
+      // actions row instead of one sitting inline in the header row and the
+      // other floating below it, so the two are never mistaken for the same
+      // kind of action.
       const open = openSubmitForms.has(f.id);
+      const submitBtn = el(
+        "button",
+        { class: `btn small ${open ? "btn-ghost" : "btn-primary"}`, type: "button", onclick: () => toggleSubmitForm(f.id) },
+        open ? "Cancel" : "✏️ Submit result"
+      );
+      const availSummary = opponentAvailabilitySummary(oppTeam, f.id);
       return el("div", { class: "fixture-block" }, [
-        el("div", { class: "fixture-row" }, [
-          ...base,
-          el("button", { class: "btn btn-ghost small", type: "button", onclick: () => toggleSubmitForm(f.id) }, open ? "Cancel" : "Submit result")
-        ]),
-        opponentAvailabilitySummary(oppTeam, f.id),
+        el("div", { class: "fixture-row" }, base),
+        el("div", { class: "fixture-actions" }, availSummary ? [submitBtn, availSummary] : [submitBtn]),
         open ? submitForm(f, isTeam1, oppTeam) : null
       ]);
     }
@@ -587,7 +596,7 @@
           render();
         }
       },
-      expanded ? "Hide availability" : "View availability"
+      expanded ? "Hide availability" : "🗓️ View availability"
     );
     if (!expanded) return el("div", { class: "avail-summary" }, [toggle]);
 

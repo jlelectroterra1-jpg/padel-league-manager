@@ -192,6 +192,13 @@ body{
 .fixture-block{ display:flex; flex-direction:column; gap:8px; padding:8px 10px; border-radius:var(--radius-sm); background:rgba(255,255,255,0.02); }
 .fixture-block .fixture-row{ background:transparent; padding:0; }
 
+/* Submit result (primary) + View availability (secondary) grouped together
+   so the two are never mistaken for the same kind of action - primary/
+   secondary button styling does the rest of the work (see .btn-primary /
+   .btn-ghost). */
+.fixture-actions{ display:flex; flex-wrap:wrap; align-items:flex-start; gap:8px 10px; }
+.fixture-actions .avail-summary{ margin-top:0; }
+
 /* two-team matchup (admin's Fixtures/Playoffs/Confirmations/Disputes views,
    which show both sides of a fixture rather than "vs opponent" from one
    team's perspective) - reuses .opponent-block for each side. */
