@@ -143,11 +143,16 @@
   // ---------- League detail ----------
 
   async function renderLeagueDetail(leagueId, tab) {
-    const [league, teams, fixtures, allResults] = await Promise.all([
+    const [league, teams, fixtures, results] = await Promise.all([
       dbGet("leagues", leagueId),
       dbList("teams", { league_id: `eq.${leagueId}` }),
       dbList("fixtures", { league_id: `eq.${leagueId}` }),
-      dbList("results")
+      // Scoped to this league via Supabase's join-filter syntax, instead of
+      // fetching every league's results and filtering client side - this
+      // ran on every tab switch/action in admin, including ones that don't
+      // even touch results (e.g. expanding a team row), so an unscoped
+      // fetch here was wasted on nearly every click.
+      dbList("results", { select: "*,fixtures!inner(id)", "fixtures.league_id": `eq.${leagueId}` })
     ]);
 
     app.innerHTML = "";
@@ -156,8 +161,6 @@
       return;
     }
 
-    const fixtureIds = new Set(fixtures.map((f) => f.id));
-    const results = allResults.filter((r) => fixtureIds.has(r.fixture_id));
     const pendingCount = results.filter((r) => r.confirmation_status === "pending" && !r.superseded).length;
     const disputedCount = results.filter((r) => r.confirmation_status === "disputed" && !r.superseded).length;
 

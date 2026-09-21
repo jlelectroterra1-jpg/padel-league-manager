@@ -65,6 +65,11 @@
     app.appendChild(form);
   }
 
+  // Only used on first load (from the URL/remembered code) - every reload
+  // after an in-app action goes through refresh() instead, which skips this
+  // lookup entirely. Re-resolving the team by access_code on every action
+  // was a full extra network round trip (~0.5-0.75s measured) for data we
+  // already had in memory - the team never changes mid-session.
   async function loadAndRender(code) {
     const teams = await dbList("teams", { access_code: `eq.${code}` });
     const team = teams[0];
@@ -83,19 +88,36 @@
       );
       return;
     }
+    await loadLeagueData(team);
+  }
 
-    const [league, allTeams, fixtures, allResults, availability] = await Promise.all([
+  // Re-fetches everything about the current league/team without re-resolving
+  // the team from its access code - call this (not loadAndRender) after any
+  // in-app action (submit/confirm/dispute/availability save).
+  async function refresh() {
+    await loadLeagueData(ctx.team);
+  }
+
+  async function loadLeagueData(team) {
+    const [league, allTeams, fixtures, results, availability] = await Promise.all([
       dbList("leagues", { id: `eq.${team.league_id}` }).then((r) => r[0]),
       dbList("teams", { league_id: `eq.${team.league_id}` }),
       dbList("fixtures", { league_id: `eq.${team.league_id}` }),
-      dbList("results"),
+      // Scoped to this league's fixtures via Supabase's join-filter syntax,
+      // instead of fetching every league's results and filtering client
+      // side - the old dbList("results") pulled the whole table on every
+      // load, growing forever as any league (not just this one) plays more
+      // matches.
+      dbList("results", { select: "*,fixtures!inner(id)", "fixtures.league_id": `eq.${team.league_id}` }),
       dbList("availability", { league_id: `eq.${team.league_id}` })
     ]);
     const teamsById = Object.fromEntries(allTeams.map((t) => [t.id, t]));
-    const fixtureIds = new Set(fixtures.map((f) => f.id));
-    const results = allResults.filter((r) => fixtureIds.has(r.fixture_id));
+    // Re-resolve from the just-fetched teams list (by id) rather than
+    // trusting the possibly-stale `team` passed in - keeps e.g. a name
+    // change made elsewhere in the league picked up on every refresh.
+    const freshTeam = teamsById[team.id] || team;
 
-    ctx = { team, league, teamsById, fixtures, results, availability };
+    ctx = { team: freshTeam, league, teamsById, fixtures, results, availability };
     render();
   }
 
@@ -341,10 +363,13 @@
       ...oppInputs
     ]);
 
-    const form = el("form", { class: "card inline-form" }, [grid, error, el("button", { class: "btn btn-primary small", type: "submit" }, "Submit result")]);
+    const submitBtn = el("button", { class: "btn btn-primary small", type: "submit" }, "Submit result");
+    const form = el("form", { class: "card inline-form" }, [grid, error, submitBtn]);
+    let isSubmitting = false;
 
     form.addEventListener("submit", async (e) => {
       e.preventDefault();
+      if (isSubmitting) return; // guards a double-tap/double-fire of the submit event itself
       const mySets = myInputs.map((i) => i.value);
       const oppSets = oppInputs.map((i) => i.value);
       if (mySets.some((v) => v === "") || oppSets.some((v) => v === "")) {
@@ -361,9 +386,27 @@
       }
       const confirmed = await confirmSubmitModal();
       if (!confirmed) return; // back to the form - scores already entered are untouched
-      await window.Results.submitResult(fixture, ctx.team.id, my, opp);
-      openSubmitForms.delete(fixture.id);
-      await loadAndRender(ctx.team.access_code);
+
+      // The round trip to actually save takes a second or two - disable the
+      // button for that whole window (not just while the modal is open) so
+      // an impatient second tap can never insert a duplicate result, and so
+      // it's never ambiguous whether the first tap "took".
+      isSubmitting = true;
+      submitBtn.disabled = true;
+      submitBtn.textContent = "Submitting...";
+      error.hidden = true;
+      try {
+        await window.Results.submitResult(fixture, ctx.team.id, my, opp);
+        openSubmitForms.delete(fixture.id);
+        await refresh();
+      } catch (err) {
+        console.error(err);
+        isSubmitting = false;
+        submitBtn.disabled = false;
+        submitBtn.textContent = "Submit result";
+        error.hidden = false;
+        error.textContent = "Couldn't submit - check your connection and try again. Your scores are still here.";
+      }
     });
 
     return form;
@@ -444,12 +487,12 @@
 
   async function doConfirm(result) {
     await window.Results.confirmResult(result, ctx.team.id);
-    await loadAndRender(ctx.team.access_code);
+    await refresh();
   }
 
   async function doDispute(result, reason) {
     await window.Results.disputeResult(result, reason);
-    await loadAndRender(ctx.team.access_code);
+    await refresh();
   }
 
   // Team name stays prominent; both players from that team's existing
@@ -595,7 +638,7 @@
           note: note.value.trim() || null
         });
         availabilityEditing = false;
-        await loadAndRender(ctx.team.access_code);
+        await refresh();
       } catch (err) {
         console.error(err);
         saveBtn.disabled = false;
