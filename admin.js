@@ -846,6 +846,7 @@
     const description = el("input", { class: "input", value: league.description || "" });
     const startDate = el("input", { class: "input", type: "date", value: league.start_date || "" });
     const numCourts = el("input", { class: "input", type: "number", min: "1", value: league.num_courts || 1 });
+    const availability = toggleField("Team availability", league.availability_enabled !== false);
     const saved = el("span", { class: "save-confirm", hidden: true }, "Saved");
 
     const form = el("form", { class: "card" }, [
@@ -853,6 +854,14 @@
       field("League name", name),
       field("Description", description),
       el("div", { class: "field-row" }, [field("Start date", startDate), field("Number of courts", numCourts)]),
+      el("div", { class: "toggle-row" }, [
+        availability.label,
+        el(
+          "p",
+          { class: "muted small" },
+          "Lets teams share weekly availability and see their opponent's, on their shared team link. Turn off to hide it everywhere for players - nothing already saved is deleted."
+        )
+      ]),
       el("div", { class: "field-row", style: "align-items:center;" }, [
         el("button", { class: "btn btn-primary", type: "submit" }, "Save changes"),
         saved
@@ -865,13 +874,23 @@
         name: name.value.trim(),
         description: description.value.trim() || null,
         start_date: startDate.value || null,
-        num_courts: Number(numCourts.value) || 1
+        num_courts: Number(numCourts.value) || 1,
+        availability_enabled: availability.input.checked
       });
       saved.hidden = false;
       setTimeout(() => (saved.hidden = true), 1500);
     });
 
     return el("div", { class: "stack" }, [form, endLeagueCard(league), deleteLeagueCard(league)]);
+  }
+
+  // A checkbox styled as a pill switch (see .switch in style.css). Returns
+  // both the wrapping <label> to render and the raw <input> so the caller
+  // can read .checked at submit time.
+  function toggleField(labelText, checked) {
+    const input = el("input", { type: "checkbox", checked: checked || undefined });
+    const label = el("label", { class: "switch" }, [input, el("span", { class: "switch-track" }), el("span", { class: "switch-label" }, labelText)]);
+    return { label, input };
   }
 
   function endLeagueCard(league) {

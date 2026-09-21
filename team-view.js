@@ -7,7 +7,9 @@
 
   const app = document.getElementById("app");
   const openSubmitForms = new Set();
-  let ctx = null; // { team, league, teamsById, fixtures, results }
+  const expandedAvail = new Set();
+  let availabilityEditing = false;
+  let ctx = null; // { team, league, teamsById, fixtures, results, availability }
 
   document.addEventListener("DOMContentLoaded", init);
 
@@ -82,17 +84,18 @@
       return;
     }
 
-    const [league, allTeams, fixtures, allResults] = await Promise.all([
+    const [league, allTeams, fixtures, allResults, availability] = await Promise.all([
       dbList("leagues", { id: `eq.${team.league_id}` }).then((r) => r[0]),
       dbList("teams", { league_id: `eq.${team.league_id}` }),
       dbList("fixtures", { league_id: `eq.${team.league_id}` }),
-      dbList("results")
+      dbList("results"),
+      dbList("availability", { league_id: `eq.${team.league_id}` })
     ]);
     const teamsById = Object.fromEntries(allTeams.map((t) => [t.id, t]));
     const fixtureIds = new Set(fixtures.map((f) => f.id));
     const results = allResults.filter((r) => fixtureIds.has(r.fixture_id));
 
-    ctx = { team, league, teamsById, fixtures, results };
+    ctx = { team, league, teamsById, fixtures, results, availability };
     render();
   }
 
@@ -135,11 +138,15 @@
               el("div", { class: "label" }, "Next match"),
               el("div", { class: "opp" }, `vs ${teamsById[nextOpp] ? teamsById[nextOpp].name : "Unknown"}`),
               teamsById[nextOpp] ? el("div", { class: "opp-players" }, `${teamsById[nextOpp].player1} & ${teamsById[nextOpp].player2}`) : null,
-              el("div", { class: "muted small" }, `Week ${next.week}`)
+              el("div", { class: "muted small" }, `Week ${next.week}`),
+              opponentAvailabilitySummary(teamsById[nextOpp], "next")
             ])
           : null
       ])
     );
+
+    const availCard = availabilityCard();
+    if (availCard) app.appendChild(availCard);
 
     const confirmedFixtureIds = new Set(
       results.filter((r) => r.confirmation_status === "confirmed" && !r.superseded).map((r) => r.fixture_id)
@@ -261,6 +268,7 @@
           ...base,
           el("button", { class: "btn btn-ghost small", type: "button", onclick: () => toggleSubmitForm(f.id) }, open ? "Cancel" : "Submit result")
         ]),
+        opponentAvailabilitySummary(oppTeam, f.id),
         open ? submitForm(f, isTeam1, oppName) : null
       ]);
     }
@@ -376,6 +384,160 @@
             entries.map((e) => el("li", {}, [el("span", { class: "opponent-list-icon" }, icon), opponentBlock(teamsById[e.opponentId])]))
           )
         : el("p", { class: "muted small" }, "None")
+    ]);
+  }
+
+  // ---------- Team availability ----------
+  // Optional board so two opposing teams can tell each other when they can
+  // play, scoped to the current real-world week (never a stale week) and
+  // gated entirely by league.availability_enabled - when off, both this card
+  // and opponentAvailabilitySummary() below render nothing, but nothing is
+  // deleted so turning it back on immediately shows whatever was saved.
+
+  function availabilityCard() {
+    const { league, team, availability } = ctx;
+    if (league && league.availability_enabled === false) return null;
+
+    const weekStart = window.Availability.currentWeekStartISO();
+    const mine = window.Availability.forTeamWeek(team.id, weekStart, availability);
+
+    if (!availabilityEditing) {
+      return el("div", { class: "card" }, [
+        el("h3", {}, "Team availability"),
+        el("p", { class: "muted small" }, `For ${window.Availability.formatWeekRange(weekStart)}`),
+        mine && mine.slots && mine.slots.length
+          ? el("div", { class: "avail-chips" }, mine.slots.map((s) => el("span", { class: "avail-chip" }, `${s.day} ${s.start}-${s.end}`)))
+          : el("p", { class: "empty-state" }, "You haven't shared your availability for this week yet."),
+        mine && mine.note ? el("p", { class: "muted small avail-note" }, `Note: ${mine.note}`) : null,
+        el(
+          "button",
+          { class: "btn btn-ghost small", type: "button", onclick: () => { availabilityEditing = true; render(); } },
+          mine ? "Edit availability" : "Add availability"
+        )
+      ]);
+    }
+
+    return el("div", { class: "card" }, [
+      el("h3", {}, "Team availability"),
+      el("p", { class: "muted small" }, `For ${window.Availability.formatWeekRange(weekStart)}`),
+      availabilityEditForm(weekStart, mine)
+    ]);
+  }
+
+  function availabilityEditForm(weekStart, existing) {
+    const initialSlots = existing && existing.slots && existing.slots.length ? existing.slots : [null];
+    const rowsContainer = el("div", { class: "stack avail-rows" }, initialSlots.map((s) => availSlotRow(s)));
+    const addBtn = el(
+      "button",
+      { class: "btn btn-ghost small", type: "button", onclick: () => rowsContainer.appendChild(availSlotRow(null)) },
+      "+ Add time slot"
+    );
+    const note = el("input", {
+      class: "input",
+      placeholder: "e.g. Tuesday evening preferred",
+      value: (existing && existing.note) || ""
+    });
+    const error = el("p", { class: "form-error", hidden: true });
+
+    const form = el("form", { class: "stack inline-form" }, [
+      rowsContainer,
+      addBtn,
+      field("Note (optional)", note),
+      error,
+      el("div", { class: "row-actions" }, [
+        el("button", { class: "btn btn-primary small", type: "submit" }, "Save availability"),
+        el("button", { class: "btn btn-ghost small", type: "button", onclick: () => { availabilityEditing = false; render(); } }, "Cancel")
+      ])
+    ]);
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const slots = [];
+      for (const row of Array.from(rowsContainer.children)) {
+        const day = row.querySelector('[data-role="day"]').value;
+        const start = row.querySelector('[data-role="start"]').value;
+        const end = row.querySelector('[data-role="end"]').value;
+        if (!start && !end) continue; // untouched blank row
+        if (!start || !end) {
+          error.hidden = false;
+          error.textContent = "Each time slot needs both a start and end time.";
+          return;
+        }
+        if (start >= end) {
+          error.hidden = false;
+          error.textContent = "End time must be after start time.";
+          return;
+        }
+        slots.push({ day, start, end });
+      }
+
+      await window.Availability.saveAvailability({
+        existingId: existing ? existing.id : null,
+        teamId: ctx.team.id,
+        leagueId: ctx.league.id,
+        weekStart,
+        slots,
+        note: note.value.trim() || null
+      });
+      availabilityEditing = false;
+      await loadAndRender(ctx.team.access_code);
+    });
+
+    return form;
+  }
+
+  // Built with plain DOM appendChild/remove (not through render()) so adding
+  // or removing a slot never wipes whatever the team has already typed into
+  // the other rows, and never jumps the page - see the mobile "don't reset
+  // the form" requirement this feature was built under.
+  function availSlotRow(slot) {
+    const day = el(
+      "select",
+      { class: "input", "data-role": "day" },
+      window.Availability.DAYS.map((d) => el("option", { value: d }, window.Availability.DAY_LABELS[d]))
+    );
+    day.value = (slot && slot.day) || "Mon";
+    const start = el("input", { class: "input", type: "time", "data-role": "start", value: (slot && slot.start) || "" });
+    const end = el("input", { class: "input", type: "time", "data-role": "end", value: (slot && slot.end) || "" });
+    const row = el("div", { class: "avail-row" }, [day, start, end]);
+    const remove = el("button", { class: "btn btn-ghost small", type: "button", onclick: () => row.remove() }, "Remove");
+    row.appendChild(remove);
+    return row;
+  }
+
+  // Compact "View availability" toggle for an opponent's CURRENT-week slots
+  // only - an opponent can view but never edit. Returns null (renders
+  // nothing) if the feature is off, there's no opponent yet, or that
+  // opponent hasn't shared anything for the current week, so it never
+  // enlarges a fixture card with an empty section.
+  function opponentAvailabilitySummary(oppTeam, key) {
+    const { league, availability } = ctx;
+    if (!oppTeam || (league && league.availability_enabled === false)) return null;
+
+    const weekStart = window.Availability.currentWeekStartISO();
+    const theirs = window.Availability.forTeamWeek(oppTeam.id, weekStart, availability);
+    if (!theirs || !theirs.slots || !theirs.slots.length) return null;
+
+    const expanded = expandedAvail.has(key);
+    const toggle = el(
+      "button",
+      {
+        class: "btn btn-ghost small",
+        type: "button",
+        onclick: () => {
+          if (expanded) expandedAvail.delete(key);
+          else expandedAvail.add(key);
+          render();
+        }
+      },
+      expanded ? "Hide availability" : "View availability"
+    );
+    if (!expanded) return el("div", { class: "avail-summary" }, [toggle]);
+
+    return el("div", { class: "avail-summary" }, [
+      toggle,
+      el("div", { class: "avail-chips" }, theirs.slots.map((s) => el("span", { class: "avail-chip" }, `${s.day} ${s.start}-${s.end}`))),
+      theirs.note ? el("p", { class: "muted small avail-note" }, `Note: ${theirs.note}`) : null
     ]);
   }
 })();

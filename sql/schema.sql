@@ -12,6 +12,10 @@ create table leagues (
   num_courts int not null default 1,
   playoff_size int not null default 8,
   status text not null default 'draft' check (status in ('draft','active','playoffs','completed','archived')),
+  -- Admin ON/OFF switch for the team availability board - purely a display
+  -- gate (see availability.js/team-view.js); turning it off never deletes
+  -- rows from the `availability` table below.
+  availability_enabled boolean not null default true,
   created_at timestamptz not null default now()
 );
 
@@ -71,10 +75,32 @@ create table keepalive (
   pinged_at timestamptz
 );
 
+-- One row per team per week it has shared availability for. week_start is
+-- always the Monday (ISO date) of the week the slots apply to - never show
+-- a row whose week_start isn't the current week as "current" (see
+-- availability.js's currentWeekStartISO/forTeamWeek). slots is a small JSON
+-- array of {day, start, end} 24h "HH:MM" strings - kept as jsonb rather than
+-- normalized rows since nothing here is queried server-side yet (everything
+-- is read into JS and filtered client-side, same as the rest of this app);
+-- this can be normalized later if overlap-detection/suggestions need it.
+create table availability (
+  id uuid primary key default gen_random_uuid(),
+  league_id uuid not null references leagues(id) on delete cascade,
+  team_id uuid not null references teams(id) on delete cascade,
+  week_start date not null,
+  slots jsonb not null default '[]',
+  note text,
+  updated_at timestamptz not null default now(),
+  created_at timestamptz not null default now(),
+  unique (team_id, week_start)
+);
+
 create index on teams(league_id);
 create index on fixtures(league_id);
 create index on fixtures(next_fixture_id);
 create index on results(fixture_id);
+create index on availability(league_id);
+create index on availability(team_id, week_start);
 
 -- RLS: enabled but permissive, gated only by possession of the public anon
 -- key (same trust model as the sibling Americano app, which has no real
@@ -87,9 +113,11 @@ alter table teams enable row level security;
 alter table fixtures enable row level security;
 alter table results enable row level security;
 alter table keepalive enable row level security;
+alter table availability enable row level security;
 
 create policy "public read/write" on leagues for all using (true) with check (true);
 create policy "public read/write" on teams for all using (true) with check (true);
 create policy "public read/write" on fixtures for all using (true) with check (true);
 create policy "public read/write" on results for all using (true) with check (true);
 create policy "public read/write" on keepalive for all using (true) with check (true);
+create policy "public read/write" on availability for all using (true) with check (true);
