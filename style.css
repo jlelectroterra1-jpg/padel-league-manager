@@ -250,7 +250,21 @@ body{
    knows whose dashboard this is before anything else, including the next
    opponent below it (see .next-match .opp, deliberately smaller/lighter). */
 .my-team-label{ font-size:11px; text-transform:uppercase; letter-spacing:0.04em; color:var(--muted); font-weight:700; margin-top:4px; }
-.team-hero h2{ margin:2px 0 2px; font-size:25px; font-weight:800; letter-spacing:-0.01em; }
+/* display:inline-block so the h2's own width tracks the team name's text
+   width (not the full centered card), letting the ::after accent line size
+   itself relative to the name instead of a fixed pixel value - a decorative
+   bar, not a real text-decoration underline (so the name never reads as a
+   clickable link). Opponent names (.next-match .opp) intentionally don't
+   get this treatment - it's reserved for the viewer's own team identity. */
+.team-hero h2{
+    display:inline-block; position:relative;
+    margin:2px 0 2px; padding-bottom:9px;
+    font-size:25px; font-weight:800; letter-spacing:-0.01em;
+}
+.team-hero h2::after{
+    content:""; position:absolute; left:50%; bottom:0; transform:translateX(-50%);
+    width:70%; height:3px; border-radius:999px; background:var(--brand);
+}
 
 /* stats strip */
 .stats-strip{
