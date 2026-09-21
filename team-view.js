@@ -359,12 +359,58 @@
         error.textContent = "A set can't be tied - one team must win each set.";
         return;
       }
+      const confirmed = await confirmSubmitModal();
+      if (!confirmed) return; // back to the form - scores already entered are untouched
       await window.Results.submitResult(fixture, ctx.team.id, my, opp);
       openSubmitForms.delete(fixture.id);
       await loadAndRender(ctx.team.access_code);
     });
 
     return form;
+  }
+
+  // Reminder modal shown before a result actually submits - appended
+  // straight to <body> (not re-rendered through render()), so opening/
+  // closing it never touches the score form underneath and nothing entered
+  // is ever lost. Resolves true only if the player taps "Submit result";
+  // Escape, clicking outside, or "Go back" all resolve false.
+  function confirmSubmitModal() {
+    return new Promise((resolve) => {
+      const goBack = el("button", { class: "btn btn-ghost small", type: "button" }, "Go back");
+      const confirmBtn = el("button", { class: "btn btn-primary small", type: "button" }, "Submit result");
+      const card = el("div", { class: "card modal-card" }, [
+        el("h3", {}, "Confirm match result"),
+        el("p", {}, "Before submitting, please remember:"),
+        el("ul", { class: "modal-list" }, [
+          el("li", {}, "Update the match score on Playtomic as well."),
+          el("li", {}, "Make sure the opposing team confirms the result in this app.")
+        ]),
+        el("p", { class: "muted small" }, "Only submit the result once you are happy that the scores entered are correct."),
+        el("div", { class: "row-actions modal-actions" }, [goBack, confirmBtn])
+      ]);
+      const backdrop = el("div", { class: "modal-backdrop" }, [card]);
+
+      const prevOverflow = document.body.style.overflow;
+      document.body.style.overflow = "hidden";
+
+      function close(result) {
+        document.removeEventListener("keydown", onKeydown);
+        document.body.style.overflow = prevOverflow;
+        backdrop.remove();
+        resolve(result);
+      }
+      function onKeydown(e) {
+        if (e.key === "Escape") close(false);
+      }
+      goBack.addEventListener("click", () => close(false));
+      confirmBtn.addEventListener("click", () => close(true));
+      backdrop.addEventListener("click", (e) => {
+        if (e.target === backdrop) close(false);
+      });
+      document.addEventListener("keydown", onKeydown);
+
+      document.body.appendChild(backdrop);
+    });
   }
 
   function scoreInput() {
