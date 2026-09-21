@@ -246,7 +246,11 @@ body{
 .score-input{ -moz-appearance:textfield; }
 
 .team-hero{ text-align:center; }
-.team-hero h2{ margin:6px 0 2px; }
+/* "YOUR TEAM" identity - the strongest thing on the page, so the viewer
+   knows whose dashboard this is before anything else, including the next
+   opponent below it (see .next-match .opp, deliberately smaller/lighter). */
+.my-team-label{ font-size:11px; text-transform:uppercase; letter-spacing:0.04em; color:var(--muted); font-weight:700; margin-top:4px; }
+.team-hero h2{ margin:2px 0 2px; font-size:25px; font-weight:800; letter-spacing:-0.01em; }
 
 /* stats strip */
 .stats-strip{
@@ -295,7 +299,11 @@ body{
     background:rgba(45,212,191,0.06); text-align:center;
 }
 .next-match .label{ font-size:11px; text-transform:uppercase; letter-spacing:0.03em; color:var(--muted); font-weight:700; }
-.next-match .opp{ font-family:var(--font-display); font-size:18px; font-weight:800; margin:4px 0; }
+/* opponent identity - deliberately lighter than .team-hero h2 (the
+   viewer's own team) so it reads as "who you're playing next", not a
+   second, competing identity on the page. */
+.next-match .opp-label{ font-size:10px; text-transform:uppercase; letter-spacing:0.04em; color:var(--faint); font-weight:700; margin-top:8px; }
+.next-match .opp{ font-family:var(--font-display); font-size:16px; font-weight:700; margin:2px 0; }
 
 /* champion */
 .champion-card{

@@ -119,9 +119,16 @@
       if (champion) app.appendChild(champion);
     }
 
+    // Visual hierarchy, strongest to weakest: MY team name > my players >
+    // stats > next match/opponent name > opponent players. The page must
+    // read as "this is MY dashboard" before anything else, so the viewer's
+    // own team gets the strongest identity treatment and the opponent
+    // (inside the next-match callout) is deliberately smaller/lighter -
+    // never allowed to outweigh the team name above it.
     app.appendChild(
       el("div", { class: "card team-hero" }, [
         el("div", { class: "muted small" }, league ? league.name : ""),
+        el("div", { class: "my-team-label" }, "Your team"),
         el("h2", {}, team.name),
         el("p", { class: "muted" }, `${team.player1} + ${team.player2}`),
         myRow
@@ -135,10 +142,10 @@
           : null,
         next
           ? el("div", { class: "next-match" }, [
-              el("div", { class: "label" }, "Next match"),
-              el("div", { class: "opp" }, `vs ${teamsById[nextOpp] ? teamsById[nextOpp].name : "Unknown"}`),
+              el("div", { class: "label" }, `Your next match · Week ${next.week}`),
+              el("div", { class: "opp-label" }, "Opponent"),
+              el("div", { class: "opp" }, teamsById[nextOpp] ? teamsById[nextOpp].name : "Unknown"),
               teamsById[nextOpp] ? el("div", { class: "opp-players" }, `${teamsById[nextOpp].player1} & ${teamsById[nextOpp].player2}`) : null,
-              el("div", { class: "muted small" }, `Week ${next.week}`),
               opponentAvailabilitySummary(teamsById[nextOpp], "next")
             ])
           : null
