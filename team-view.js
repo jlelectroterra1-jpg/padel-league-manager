@@ -450,7 +450,11 @@
         el("h3", {}, "Team availability"),
         el("p", { class: "muted small" }, `For ${window.Availability.formatWeekRange(weekStart)}`),
         mine && mine.slots && mine.slots.length
-          ? el("div", { class: "avail-chips" }, mine.slots.map((s) => el("span", { class: "avail-chip" }, `${s.day} ${s.start}-${s.end}`)))
+          ? el(
+              "div",
+              { class: "avail-chips" },
+              mine.slots.map((s) => el("span", { class: "avail-chip" }, `${window.Availability.slotDayLabel(s)} ${s.start}-${s.end}`))
+            )
           : el("p", { class: "empty-state" }, "You haven't shared your availability for this week yet."),
         mine && mine.note ? el("p", { class: "muted small avail-note" }, `Note: ${mine.note}`) : null,
         el(
@@ -503,7 +507,9 @@
       e.preventDefault();
       const slots = [];
       for (const row of Array.from(rowsContainer.children)) {
-        const day = row.querySelector('[data-role="day"]').value;
+        const isRange = row.dataset.availType === "range";
+        const day = row.querySelector(isRange ? '[data-role="from-day"]' : '[data-role="day"]').value;
+        const toDay = isRange ? row.querySelector('[data-role="to-day"]').value : null;
         const startH = row.querySelector('[data-role="start-h"]').value;
         const endH = row.querySelector('[data-role="end-h"]').value;
         const start = startH ? `${startH}:${row.querySelector('[data-role="start-m"]').value}` : "";
@@ -519,7 +525,12 @@
           error.textContent = "End time must be after start time.";
           return;
         }
-        slots.push({ day, start, end });
+        if (isRange && window.Availability.DAYS.indexOf(toDay) < window.Availability.DAYS.indexOf(day)) {
+          error.hidden = false;
+          error.textContent = '"To day" must be on or after "From day".';
+          return;
+        }
+        slots.push(isRange ? { day, toDay, start, end } : { day, start, end });
       }
 
       await window.Availability.saveAvailability({
@@ -541,18 +552,65 @@
   // or removing a slot never wipes whatever the team has already typed into
   // the other rows, and never jumps the page - see the mobile "don't reset
   // the form" requirement this feature was built under.
+  //
+  // Each entry can be a single day OR a day range (Mon-Fri) - both day
+  // pickers are always in the DOM (so switching type never loses either
+  // selection), just shown/hidden via row.dataset.availType, which the
+  // submit handler in availabilityEditForm reads to know which one to save.
   function availSlotRow(slot) {
+    const isRange = !!(slot && slot.toDay && slot.toDay !== slot.day);
+    const row = el("div", { class: "avail-entry" });
+
     const day = el(
       "select",
       { class: "input", "data-role": "day" },
       window.Availability.DAYS.map((d) => el("option", { value: d }, window.Availability.DAY_LABELS[d]))
     );
     day.value = (slot && slot.day) || "Mon";
+    const dayBlock = el("div", { class: "avail-day-row" }, [field("Day", day)]);
+
+    const fromDay = el(
+      "select",
+      { class: "input", "data-role": "from-day" },
+      window.Availability.DAYS.map((d) => el("option", { value: d }, window.Availability.DAY_LABELS[d]))
+    );
+    fromDay.value = (slot && slot.day) || "Mon";
+    const toDay = el(
+      "select",
+      { class: "input", "data-role": "to-day" },
+      window.Availability.DAYS.map((d) => el("option", { value: d }, window.Availability.DAY_LABELS[d]))
+    );
+    toDay.value = (slot && slot.toDay) || "Fri";
+    const rangeBlock = el("div", { class: "avail-day-row" }, [field("From day", fromDay), field("To day", toDay)]);
+
+    const indivBtn = el("button", { class: "btn small avail-type-btn", type: "button" }, "Individual day");
+    const rangeBtn = el("button", { class: "btn small avail-type-btn", type: "button" }, "Day range");
+
+    function setType(type) {
+      // Toggle inline style rather than the `hidden` attribute - .avail-day-row's
+      // own display:flex rule has equal specificity to the UA [hidden]
+      // stylesheet rule and, being an author style, wins the tie, so
+      // `.hidden = true` alone doesn't actually hide it.
+      row.dataset.availType = type;
+      dayBlock.style.display = type === "individual" ? "flex" : "none";
+      rangeBlock.style.display = type === "range" ? "flex" : "none";
+      indivBtn.classList.toggle("active", type === "individual");
+      rangeBtn.classList.toggle("active", type === "range");
+    }
+    indivBtn.addEventListener("click", () => setType("individual"));
+    rangeBtn.addEventListener("click", () => setType("range"));
+
     const start = timeUnit("start", slot && slot.start);
     const end = timeUnit("end", slot && slot.end);
-    const row = el("div", { class: "avail-row" }, [day, start, end]);
+    const timeRow = el("div", { class: "avail-row" }, [start, end]);
     const remove = el("button", { class: "btn btn-ghost small", type: "button", onclick: () => row.remove() }, "Remove");
-    row.appendChild(remove);
+    timeRow.appendChild(remove);
+
+    row.appendChild(el("div", { class: "avail-type-toggle" }, [indivBtn, rangeBtn]));
+    row.appendChild(dayBlock);
+    row.appendChild(rangeBlock);
+    row.appendChild(timeRow);
+    setType(isRange ? "range" : "individual");
     return row;
   }
 
@@ -618,7 +676,11 @@
 
     return el("div", { class: "avail-summary" }, [
       toggle,
-      el("div", { class: "avail-chips" }, theirs.slots.map((s) => el("span", { class: "avail-chip" }, `${s.day} ${s.start}-${s.end}`))),
+      el(
+        "div",
+        { class: "avail-chips" },
+        theirs.slots.map((s) => el("span", { class: "avail-chip" }, `${window.Availability.slotDayLabel(s)} ${s.start}-${s.end}`))
+      ),
       theirs.note ? el("p", { class: "muted small avail-note" }, `Note: ${theirs.note}`) : null
     ]);
   }

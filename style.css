@@ -355,6 +355,22 @@ body{
 .toggle-row{ display:flex; flex-direction:column; gap:6px; margin-bottom:14px; }
 
 /* team availability board */
+/* one editable availability entry - a small bordered card so several
+   entries (each now up to 3 rows: type toggle, day picker(s), time+remove)
+   read as distinct items instead of running together. */
+.avail-entry{
+    display:flex; flex-direction:column; gap:8px;
+    padding:10px; border-radius:var(--radius-sm);
+    background:rgba(255,255,255,0.03); border:1px solid var(--line-soft);
+}
+.avail-type-toggle{ display:flex; gap:6px; }
+.avail-type-btn{ flex:1 1 0; }
+.avail-type-btn.active{
+    background:linear-gradient(135deg,rgba(45,212,191,0.18),rgba(59,130,246,0.14));
+    border-color:rgba(45,212,191,0.55); color:#9ff7ea;
+}
+.avail-day-row{ display:flex; gap:8px; flex-wrap:wrap; }
+.avail-day-row .field{ min-width:120px; }
 .avail-row{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
 .avail-row .input{ flex:1 1 110px; min-width:96px; width:auto; }
 .avail-row .btn{ flex:none; }
