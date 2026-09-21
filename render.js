@@ -57,5 +57,44 @@
       .join(", ");
   }
 
-  window.Render = { el, formatDate, badge, qs, genAccessCode, formatSets };
+  // Compact 3-set score entry, shared verbatim between the team-facing
+  // "Submit result" form (team-view.js) and the admin "Enter/Correct score"
+  // form (admin.js), so the two never drift back into separate designs.
+  // Layout: an empty corner cell, S1/S2/S3 headers, then one row per team
+  // (whatever cell content the caller passes - a team+players block on
+  // both sides) with its 3 score inputs alongside. See .score-grid in
+  // style.css.
+  function scoreGrid(team1Cell, team1Inputs, team2Cell, team2Inputs) {
+    return el("div", { class: "score-grid" }, [
+      el("div", { class: "score-grid-label" }),
+      el("div", { class: "score-grid-head" }, "S1"),
+      el("div", { class: "score-grid-head" }, "S2"),
+      el("div", { class: "score-grid-head" }, "S3"),
+      el("div", { class: "score-grid-team" }, team1Cell),
+      ...team1Inputs,
+      el("div", { class: "score-grid-team" }, team2Cell),
+      ...team2Inputs
+    ]);
+  }
+
+  function scoreInput() {
+    return el("input", { class: "input score-input", type: "number", min: "0", inputmode: "numeric" });
+  }
+
+  // Enter/"Next" on a mobile numeric keypad moves to the next box instead of
+  // trying to submit the form early; the last box's key is left as "Done".
+  function wireEnterAdvance(inputs) {
+    inputs.forEach((input, i) => {
+      input.setAttribute("enterkeyhint", i < inputs.length - 1 ? "next" : "done");
+      input.addEventListener("keydown", (e) => {
+        if (e.key !== "Enter") return;
+        e.preventDefault();
+        const next = inputs[i + 1];
+        if (next) next.focus();
+        else input.blur();
+      });
+    });
+  }
+
+  window.Render = { el, formatDate, badge, qs, genAccessCode, formatSets, scoreGrid, scoreInput, wireEnterAdvance };
 })();

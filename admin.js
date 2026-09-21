@@ -1,7 +1,7 @@
 // Admin console: league + team CRUD, fixture generation, fixture/opponent views.
 // DOM glue only - all scheduling math lives in fixtures.js.
 (function () {
-  const { el, formatDate, badge, genAccessCode } = window.Render;
+  const { el, formatDate, badge, genAccessCode, scoreGrid, scoreInput, wireEnterAdvance } = window.Render;
   const { dbList, dbGet, dbInsert, dbUpdate, dbDelete } = window.DB;
 
   const app = document.getElementById("app");
@@ -679,10 +679,6 @@
     return badge(`${score} pending`, "blue");
   }
 
-  function teamName(id, teamsById) {
-    return teamsById[id] ? teamsById[id].name : "Unknown";
-  }
-
   // Team name stays prominent; both players from that team's existing
   // record show underneath in smaller text - read live from teamsById,
   // never duplicated, so a rename in Teams shows up immediately everywhere
@@ -792,35 +788,38 @@
     render();
   }
 
+  // Same compact score-grid component the team-facing "Submit result" form
+  // uses (window.Render.scoreGrid/scoreInput/wireEnterAdvance) - kept as one
+  // shared component specifically so admin and player score entry can't
+  // drift back into two separate designs.
   function overrideForm(fixture, oldResult, alwaysOpen, teamsById) {
-    const name1 = teamName(fixture.team1_id, teamsById);
-    const name2 = teamName(fixture.team2_id, teamsById);
-    const setRows = [1, 2, 3].map((n) => ({
-      team1: el("input", {
-        class: "input",
-        type: "number",
-        min: "0",
-        value: oldResult ? oldResult[`set${n}_team1_score`] : ""
-      }),
-      team2: el("input", {
-        class: "input",
-        type: "number",
-        min: "0",
-        value: oldResult ? oldResult[`set${n}_team2_score`] : ""
-      })
-    }));
+    const team1 = teamsById[fixture.team1_id];
+    const team2 = teamsById[fixture.team2_id];
+    const team1Inputs = [1, 2, 3].map((n) => {
+      const input = scoreInput();
+      if (oldResult) input.value = oldResult[`set${n}_team1_score`];
+      return input;
+    });
+    const team2Inputs = [1, 2, 3].map((n) => {
+      const input = scoreInput();
+      if (oldResult) input.value = oldResult[`set${n}_team2_score`];
+      return input;
+    });
+    wireEnterAdvance([...team1Inputs, ...team2Inputs]);
     const error = el("p", { class: "form-error", hidden: true });
 
+    const grid = scoreGrid(teamBlock(team1), team1Inputs, teamBlock(team2), team2Inputs);
+
     const form = el("form", { class: alwaysOpen ? "" : "inline-form" }, [
-      ...setRows.map((row, i) => el("div", { class: "field-row" }, [field(`Set ${i + 1} - ${name1}`, row.team1), field(`Set ${i + 1} - ${name2}`, row.team2)])),
+      grid,
       error,
       el("button", { class: "btn btn-primary small", type: "submit" }, oldResult ? "Save correct score" : "Save score")
     ]);
 
     form.addEventListener("submit", async (e) => {
       e.preventDefault();
-      const team1Sets = setRows.map((r) => r.team1.value);
-      const team2Sets = setRows.map((r) => r.team2.value);
+      const team1Sets = team1Inputs.map((i) => i.value);
+      const team2Sets = team2Inputs.map((i) => i.value);
       if (team1Sets.some((v) => v === "") || team2Sets.some((v) => v === "")) {
         error.hidden = false;
         error.textContent = "Enter all 3 sets for both teams.";

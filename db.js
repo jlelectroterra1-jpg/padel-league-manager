@@ -44,6 +44,14 @@
 
   function matchesFilter(row, filter) {
     return Object.entries(filter).every(([key, value]) => {
+      // "select" and dotted keys (e.g. "fixtures.league_id") are Supabase-only
+      // query shaping - a `select=*,fixtures!inner(id)` embedded-resource
+      // filter for scoping a query through a foreign-key join server-side.
+      // Local rows are flat, so there's no join to filter through; skip
+      // these rather than treating them as "no row has this literal
+      // property", which would silently return zero rows in local/offline
+      // dev mode instead of the (unscoped, but non-empty) local data.
+      if (key === "select" || key.includes(".")) return true;
       const raw = String(value).replace(/^eq\./, "");
       return String(row[key]) === raw;
     });

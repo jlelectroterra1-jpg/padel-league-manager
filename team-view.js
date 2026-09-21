@@ -2,7 +2,7 @@
 // shows that team's fixtures with score submission / confirmation / dispute.
 // Write-path logic lives in results.js - this file is DOM glue only.
 (function () {
-  const { el, qs } = window.Render;
+  const { el, qs, scoreGrid, scoreInput, wireEnterAdvance } = window.Render;
   const { dbList } = window.DB;
 
   const app = document.getElementById("app");
@@ -352,16 +352,7 @@
     wireEnterAdvance([...myInputs, ...oppInputs]);
     const error = el("p", { class: "form-error", hidden: true });
 
-    const grid = el("div", { class: "score-grid" }, [
-      el("div", { class: "score-grid-label" }),
-      el("div", { class: "score-grid-head" }, "S1"),
-      el("div", { class: "score-grid-head" }, "S2"),
-      el("div", { class: "score-grid-head" }, "S3"),
-      el("div", { class: "score-grid-team" }, opponentBlock(ctx.team, "")),
-      ...myInputs,
-      el("div", { class: "score-grid-team" }, opponentBlock(oppTeam, "")),
-      ...oppInputs
-    ]);
+    const grid = scoreGrid(opponentBlock(ctx.team, ""), myInputs, opponentBlock(oppTeam, ""), oppInputs);
 
     const submitBtn = el("button", { class: "btn btn-primary small", type: "submit" }, "Submit result");
     const form = el("form", { class: "card inline-form" }, [grid, error, submitBtn]);
@@ -453,25 +444,6 @@
       document.addEventListener("keydown", onKeydown);
 
       document.body.appendChild(backdrop);
-    });
-  }
-
-  function scoreInput() {
-    return el("input", { class: "input score-input", type: "number", min: "0", inputmode: "numeric" });
-  }
-
-  // Enter/"Next" on a mobile numeric keypad moves to the next box instead of
-  // trying to submit the form early; the last box's key is left as "Done".
-  function wireEnterAdvance(inputs) {
-    inputs.forEach((input, i) => {
-      input.setAttribute("enterkeyhint", i < inputs.length - 1 ? "next" : "done");
-      input.addEventListener("keydown", (e) => {
-        if (e.key !== "Enter") return;
-        e.preventDefault();
-        const next = inputs[i + 1];
-        if (next) next.focus();
-        else input.blur();
-      });
     });
   }
 
