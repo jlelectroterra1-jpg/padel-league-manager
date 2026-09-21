@@ -49,13 +49,14 @@ body{
     gap:14px;
     padding:20px 18px;
 }
+/* official app logo - the image already has its own rounded-badge artwork
+   and transparent corners, so this just sizes it (object-fit:contain keeps
+   its aspect ratio - it's a square asset, but this guards against ever
+   swapping in a non-square one) without adding another background/shadow
+   on top of what's already baked into the image. */
 .brand-mark{
     width:44px; height:44px; flex:none;
-    display:flex; align-items:center; justify-content:center;
-    border-radius:13px;
-    background:linear-gradient(135deg,var(--brand),var(--blue));
-    box-shadow:0 8px 20px rgba(45,212,191,0.28), inset 0 1px 0 rgba(255,255,255,0.35);
-    color:white; font-family:var(--font-display); font-weight:800; font-size:15px;
+    object-fit:contain;
 }
 .app-header h1{ margin:0; font-family:var(--font-display); font-size:22px; font-weight:800; letter-spacing:-0.01em; }
 .app-header p{ margin:4px 0 0; color:var(--muted); font-size:12px; font-weight:600; letter-spacing:0.02em; text-transform:uppercase; }
