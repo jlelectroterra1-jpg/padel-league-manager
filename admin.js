@@ -415,7 +415,7 @@
   function teamRow(league, team, allTeams, fixtures, teamsById, results) {
     const expanded = expandedTeams.has(team.id);
     const editing = editingTeams.has(team.id);
-    const link = `${location.origin}${location.pathname.replace(/admin\.html$/, "")}team.html?code=${team.access_code}`;
+    const link = `${location.origin}${location.pathname.replace(/admin\.html$/, "")}team/${team.access_code}`;
 
     if (editing) {
       return el("div", { class: "team-row" }, [editTeamForm(team)]);

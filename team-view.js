@@ -16,6 +16,8 @@
     if (codeFromUrl) window.State.rememberTeamCode(codeFromUrl.toUpperCase());
     const code = (codeFromUrl || window.State.getRememberedTeamCode() || "").toUpperCase();
 
+    if (code) upgradeUrlToCleanPath(code);
+
     if (!code) {
       renderNoCode();
       return;
@@ -28,6 +30,18 @@
       app.innerHTML = "";
       app.appendChild(el("div", { class: "card" }, [el("h3", {}, "Something went wrong"), el("p", { class: "muted" }, String(err.message || err))]));
     }
+  }
+
+  // Old team.html?code=XXX links (and the 404.html handoff for a clean
+  // .../team/XXX or .../t/XXX link opened directly) both land here with the
+  // code in the query string - rewrite the address bar to the clean
+  // .../team/XXX form without reloading, so it always matches what "Copy
+  // Team Link" in admin hands out, however the page was actually reached.
+  function upgradeUrlToCleanPath(code) {
+    if (!window.history || !window.history.replaceState) return;
+    const cleanPath = location.pathname.replace(/team\.html$/, "") + "team/" + code;
+    if (location.pathname === cleanPath && !location.search) return;
+    history.replaceState(null, "", location.origin + cleanPath);
   }
 
   function renderNoCode() {

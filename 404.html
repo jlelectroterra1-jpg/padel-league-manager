@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Padel League Manager</title>
+</head>
+<body>
+<script>
+// GitHub Pages serves this file (with an HTTP 404 status, but the content
+// still loads and runs) for any URL that doesn't match a real file. We use
+// that to support clean team links like ".../team/ABCDEF" or ".../t/ABCDEF"
+// on a plain static host: pull the code out of the path and hand off to the
+// real team.html?code=... page, which team-view.js then rewrites the address
+// bar back to the clean form via history.replaceState (see team-view.js).
+// Anything else unmatched just goes to the site root.
+(function () {
+  var path = window.location.pathname;
+  var idx = path.search(/\/(?:team|t)\/[^\/]+\/?$/);
+  if (idx !== -1) {
+    var base = path.slice(0, idx + 1);
+    var code = decodeURIComponent(path.slice(idx).match(/\/(?:team|t)\/([^\/]+)\/?$/)[1]);
+    window.location.replace(base + "team.html?code=" + encodeURIComponent(code));
+  } else {
+    window.location.replace(path.slice(0, path.lastIndexOf("/") + 1));
+  }
+})();
+</script>
+<p>Redirecting&hellip;</p>
+</body>
+</html>
