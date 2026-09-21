@@ -455,8 +455,10 @@
       const slots = [];
       for (const row of Array.from(rowsContainer.children)) {
         const day = row.querySelector('[data-role="day"]').value;
-        const start = row.querySelector('[data-role="start"]').value;
-        const end = row.querySelector('[data-role="end"]').value;
+        const startH = row.querySelector('[data-role="start-h"]').value;
+        const endH = row.querySelector('[data-role="end-h"]').value;
+        const start = startH ? `${startH}:${row.querySelector('[data-role="start-m"]').value}` : "";
+        const end = endH ? `${endH}:${row.querySelector('[data-role="end-m"]').value}` : "";
         if (!start && !end) continue; // untouched blank row
         if (!start || !end) {
           error.hidden = false;
@@ -497,12 +499,39 @@
       window.Availability.DAYS.map((d) => el("option", { value: d }, window.Availability.DAY_LABELS[d]))
     );
     day.value = (slot && slot.day) || "Mon";
-    const start = el("input", { class: "input", type: "time", "data-role": "start", value: (slot && slot.start) || "" });
-    const end = el("input", { class: "input", type: "time", "data-role": "end", value: (slot && slot.end) || "" });
+    const start = timeUnit("start", slot && slot.start);
+    const end = timeUnit("end", slot && slot.end);
     const row = el("div", { class: "avail-row" }, [day, start, end]);
     const remove = el("button", { class: "btn btn-ghost small", type: "button", onclick: () => row.remove() }, "Remove");
     row.appendChild(remove);
     return row;
+  }
+
+  // Plain hour/minute <select> pair instead of <input type="time"> - a
+  // native time input's displayed format (12h AM/PM vs 24h) follows the
+  // device's OS locale and can't be forced to 24h from the page (the usual
+  // lang="en-GB" trick no longer works in current Chrome/Safari), so this is
+  // the only way to guarantee every team always sees 24h, regardless of
+  // their phone's locale settings.
+  function timeUnit(prefix, value) {
+    const [h, m] = (value || "").split(":");
+    const hour = el(
+      "select",
+      { class: "avail-time-h", "data-role": `${prefix}-h` },
+      [el("option", { value: "" }, "--"), ...Array.from({ length: 24 }, (_, i) => el("option", { value: pad2(i) }, pad2(i)))]
+    );
+    hour.value = h || "";
+    const minute = el(
+      "select",
+      { class: "avail-time-m", "data-role": `${prefix}-m` },
+      ["00", "05", "10", "15", "20", "25", "30", "35", "40", "45", "50", "55"].map((mm) => el("option", { value: mm }, mm))
+    );
+    minute.value = m || "00";
+    return el("div", { class: "avail-time" }, [hour, el("span", { class: "avail-time-sep" }, ":"), minute]);
+  }
+
+  function pad2(n) {
+    return String(n).padStart(2, "0");
   }
 
   // Compact "View availability" toggle for an opponent's CURRENT-week slots

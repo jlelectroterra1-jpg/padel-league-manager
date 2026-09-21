@@ -300,6 +300,16 @@ body{
 .avail-row{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
 .avail-row .input{ flex:1 1 110px; min-width:96px; width:auto; }
 .avail-row .btn{ flex:none; }
+/* 24h hour/minute <select> pair standing in for <input type="time"> - see
+   timeUnit() in team-view.js for why a native time input can't be trusted
+   to show 24h on every device. */
+.avail-time{ display:inline-flex; align-items:center; gap:4px; flex:none; }
+.avail-time-h, .avail-time-m{
+    background:var(--field); border:1px solid var(--line); border-radius:var(--radius-sm);
+    color:var(--text); font-family:var(--font-body); font-size:16px; padding:10px 4px;
+    height:44px; width:60px; text-align:center;
+}
+.avail-time-sep{ color:var(--faint); font-weight:700; }
 .avail-chips{ display:flex; flex-wrap:wrap; gap:6px; margin-top:6px; }
 .avail-chip{
     background:rgba(45,212,191,0.1); border:1px solid rgba(45,212,191,0.35); color:#9ff7ea;
