@@ -456,8 +456,13 @@
         el(
           "button",
           { class: "btn btn-ghost small", type: "button", onclick: () => { availabilityEditing = true; render(); } },
-          mine ? "Edit availability" : "Add availability"
-        )
+          mine ? "Update my availability" : "+ Add my availability"
+        ),
+        // Said once here rather than repeated under every fixture's "View
+        // <opponent>'s availability" button, which would clutter the list -
+        // this is the one place a player is actively thinking about
+        // availability, so it's the natural spot to explain both halves.
+        el("p", { class: "muted small avail-hint" }, "This is your own team's availability. You can see when your opponents are available to play from each upcoming fixture below.")
       ]);
     }
 
@@ -578,11 +583,15 @@
     return String(n).padStart(2, "0");
   }
 
-  // Compact "View availability" toggle for an opponent's CURRENT-week slots
-  // only - an opponent can view but never edit. Returns null (renders
-  // nothing) if the feature is off, there's no opponent yet, or that
-  // opponent hasn't shared anything for the current week, so it never
-  // enlarges a fixture card with an empty section.
+  // Compact "View <opponent>'s availability" toggle for an opponent's
+  // CURRENT-week slots only - an opponent can view but never edit. The
+  // team name is spelled out (never just "View availability") so a player
+  // who just finished updating their OWN availability doesn't click this
+  // expecting to see it played back to them - that mix-up is exactly what
+  // this wording exists to prevent. Returns null (renders nothing) if the
+  // feature is off, there's no opponent yet, or that opponent hasn't
+  // shared anything for the current week, so it never enlarges a fixture
+  // card with an empty section.
   function opponentAvailabilitySummary(oppTeam, key) {
     const { league, availability } = ctx;
     if (!oppTeam || (league && league.availability_enabled === false)) return null;
@@ -595,7 +604,7 @@
     const toggle = el(
       "button",
       {
-        class: "btn btn-ghost small",
+        class: "btn btn-ghost small avail-toggle",
         type: "button",
         onclick: () => {
           if (expanded) expandedAvail.delete(key);
@@ -603,7 +612,7 @@
           render();
         }
       },
-      expanded ? "Hide availability" : "🗓️ View availability"
+      expanded ? `Hide ${oppTeam.name}'s availability` : `🗓️ View ${oppTeam.name}'s availability`
     );
     if (!expanded) return el("div", { class: "avail-summary" }, [toggle]);
 

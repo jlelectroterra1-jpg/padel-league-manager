@@ -197,7 +197,12 @@ body{
    secondary button styling does the rest of the work (see .btn-primary /
    .btn-ghost). */
 .fixture-actions{ display:flex; flex-wrap:wrap; align-items:flex-start; gap:8px 10px; }
-.fixture-actions .avail-summary{ margin-top:0; }
+.fixture-actions .avail-summary{ margin-top:0; min-width:0; }
+/* the "View <opponent>'s availability" label now includes the team's real
+   name, which can run long - .btn defaults to white-space:nowrap, so this
+   overrides it to wrap onto a second line instead of overflowing the
+   fixture card on a narrow phone. */
+.avail-toggle{ white-space:normal; overflow-wrap:break-word; max-width:100%; line-height:1.25; }
 
 /* two-team matchup (admin's Fixtures/Playoffs/Confirmations/Disputes views,
    which show both sides of a fixture rather than "vs opponent" from one
@@ -368,6 +373,7 @@ body{
     padding:4px 10px; border-radius:999px; font-size:12.5px; font-weight:700; white-space:nowrap;
 }
 .avail-note{ margin-top:6px; overflow-wrap:break-word; }
+.avail-hint{ margin-top:10px; }
 .avail-summary{ margin-top:8px; }
 .next-match .avail-summary .avail-chips{ justify-content:center; }
 
