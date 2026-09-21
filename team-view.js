@@ -492,15 +492,14 @@
     });
     const error = el("p", { class: "form-error", hidden: true });
 
+    const saveBtn = el("button", { class: "btn btn-primary small", type: "submit" }, "Save availability");
+    const cancelBtn = el("button", { class: "btn btn-ghost small", type: "button", onclick: () => { availabilityEditing = false; render(); } }, "Cancel");
     const form = el("form", { class: "stack inline-form" }, [
       rowsContainer,
       addBtn,
       field("Note (optional)", note),
       error,
-      el("div", { class: "row-actions" }, [
-        el("button", { class: "btn btn-primary small", type: "submit" }, "Save availability"),
-        el("button", { class: "btn btn-ghost small", type: "button", onclick: () => { availabilityEditing = false; render(); } }, "Cancel")
-      ])
+      el("div", { class: "row-actions" }, [saveBtn, cancelBtn])
     ]);
 
     form.addEventListener("submit", async (e) => {
@@ -533,16 +532,32 @@
         slots.push(isRange ? { day, toDay, start, end } : { day, start, end });
       }
 
-      await window.Availability.saveAvailability({
-        existingId: existing ? existing.id : null,
-        teamId: ctx.team.id,
-        leagueId: ctx.league.id,
-        weekStart,
-        slots,
-        note: note.value.trim() || null
-      });
-      availabilityEditing = false;
-      await loadAndRender(ctx.team.access_code);
+      // No feedback while the save round-trips to Supabase used to make the
+      // button look unresponsive/broken on a slower connection - disable it
+      // and say so instead, and surface a real error if the request fails
+      // rather than leaving the button looking stuck forever.
+      saveBtn.disabled = true;
+      cancelBtn.disabled = true;
+      saveBtn.textContent = "Saving...";
+      try {
+        await window.Availability.saveAvailability({
+          existingId: existing ? existing.id : null,
+          teamId: ctx.team.id,
+          leagueId: ctx.league.id,
+          weekStart,
+          slots,
+          note: note.value.trim() || null
+        });
+        availabilityEditing = false;
+        await loadAndRender(ctx.team.access_code);
+      } catch (err) {
+        console.error(err);
+        saveBtn.disabled = false;
+        cancelBtn.disabled = false;
+        saveBtn.textContent = "Save availability";
+        error.hidden = false;
+        error.textContent = "Couldn't save - check your connection and try again.";
+      }
     });
 
     return form;
