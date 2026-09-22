@@ -81,20 +81,39 @@
     return el("input", { class: "input score-input", type: "number", min: "0", inputmode: "numeric" });
   }
 
-  // Enter/"Next" on a mobile numeric keypad moves to the next box instead of
-  // trying to submit the form early; the last box's key is left as "Done".
-  function wireEnterAdvance(inputs) {
+  // Advances focus through `inputs` in the given order (pass whatever
+  // sequence makes sense - e.g. interleaved "your team set 1, their team
+  // set 1, your team set 2, ..." rather than the DOM/visual order) two ways:
+  // pressing Enter/"Next" on a mobile numeric keypad advances immediately,
+  // and simply pausing after typing a value advances automatically after a
+  // short delay - long enough that a two-digit score (e.g. "10") can still
+  // be typed in full before it fires. The delay resets on every keystroke
+  // and is cancelled if the player taps away to a different box themselves,
+  // so it never steals focus from somewhere they've already moved to.
+  const AUTO_ADVANCE_DELAY = 450;
+  function wireAutoAdvance(inputs) {
     inputs.forEach((input, i) => {
       input.setAttribute("enterkeyhint", i < inputs.length - 1 ? "next" : "done");
-      input.addEventListener("keydown", (e) => {
-        if (e.key !== "Enter") return;
-        e.preventDefault();
+      let timer = null;
+      const advance = () => {
+        clearTimeout(timer);
         const next = inputs[i + 1];
         if (next) next.focus();
         else input.blur();
+      };
+      input.addEventListener("input", () => {
+        clearTimeout(timer);
+        if (input.value === "") return;
+        timer = setTimeout(advance, AUTO_ADVANCE_DELAY);
       });
+      input.addEventListener("keydown", (e) => {
+        if (e.key !== "Enter") return;
+        e.preventDefault();
+        advance();
+      });
+      input.addEventListener("blur", () => clearTimeout(timer));
     });
   }
 
-  window.Render = { el, formatDate, badge, qs, genAccessCode, formatSets, scoreGrid, scoreInput, wireEnterAdvance };
+  window.Render = { el, formatDate, badge, qs, genAccessCode, formatSets, scoreGrid, scoreInput, wireAutoAdvance };
 })();

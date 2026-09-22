@@ -1,7 +1,7 @@
 // Admin console: league + team CRUD, fixture generation, fixture/opponent views.
 // DOM glue only - all scheduling math lives in fixtures.js.
 (function () {
-  const { el, formatDate, badge, genAccessCode, scoreGrid, scoreInput, wireEnterAdvance } = window.Render;
+  const { el, formatDate, badge, genAccessCode, scoreGrid, scoreInput, wireAutoAdvance } = window.Render;
   const { dbList, dbGet, dbInsert, dbUpdate, dbDelete } = window.DB;
 
   const app = document.getElementById("app");
@@ -36,8 +36,21 @@
   async function render() {
     const scrollY = window.scrollY;
     const route = parseHash();
-    app.innerHTML = "";
-    app.appendChild(el("p", { class: "loading" }, "Loading..."));
+    // Only show a loading placeholder on the very first render (#app is
+    // still empty). Every later call to render() - triggered by clicking a
+    // tab, expanding a row, saving a score, confirming a result, anything -
+    // used to ALWAYS wipe #app and show "Loading..." here first, then wipe
+    // and rebuild it again once renderLeaguesView()/renderLeagueDetail()
+    // got fresh data. That's what made every action, including saving a
+    // score, visibly flash to a blank loading screen and back: two wipes
+    // instead of one, with a "Loading..." flash in between. Both of those
+    // functions already do their own atomic wipe-and-rebuild once data is
+    // ready, so once #app has real content, this outer wipe is redundant -
+    // skip it and leave the current view on screen until the fresh one is
+    // ready to replace it in one step.
+    if (!app.hasChildNodes()) {
+      app.appendChild(el("p", { class: "loading" }, "Loading..."));
+    }
     try {
       if (route.view === "leagues") {
         await renderLeaguesView();
@@ -789,7 +802,7 @@
   }
 
   // Same compact score-grid component the team-facing "Submit result" form
-  // uses (window.Render.scoreGrid/scoreInput/wireEnterAdvance) - kept as one
+  // uses (window.Render.scoreGrid/scoreInput/wireAutoAdvance) - kept as one
   // shared component specifically so admin and player score entry can't
   // drift back into two separate designs.
   function overrideForm(fixture, oldResult, alwaysOpen, teamsById) {
@@ -805,19 +818,22 @@
       if (oldResult) input.value = oldResult[`set${n}_team2_score`];
       return input;
     });
-    wireEnterAdvance([...team1Inputs, ...team2Inputs]);
+    // Interleaved (team1 S1, team2 S1, team1 S2, ...) rather than the
+    // grid's row-major DOM order - matches entering both teams' numbers for
+    // one set before moving to the next, same as the team-facing form.
+    wireAutoAdvance([team1Inputs[0], team2Inputs[0], team1Inputs[1], team2Inputs[1], team1Inputs[2], team2Inputs[2]]);
     const error = el("p", { class: "form-error", hidden: true });
 
     const grid = scoreGrid(teamBlock(team1), team1Inputs, teamBlock(team2), team2Inputs);
 
-    const form = el("form", { class: alwaysOpen ? "" : "inline-form" }, [
-      grid,
-      error,
-      el("button", { class: "btn btn-primary small", type: "submit" }, oldResult ? "Save correct score" : "Save score")
-    ]);
+    const saveLabel = oldResult ? "Save correct score" : "Save score";
+    const saveBtn = el("button", { class: "btn btn-primary small", type: "submit" }, saveLabel);
+    const form = el("form", { class: alwaysOpen ? "" : "inline-form" }, [grid, error, saveBtn]);
+    let isSaving = false;
 
     form.addEventListener("submit", async (e) => {
       e.preventDefault();
+      if (isSaving) return;
       const team1Sets = team1Inputs.map((i) => i.value);
       const team2Sets = team2Inputs.map((i) => i.value);
       if (team1Sets.some((v) => v === "") || team2Sets.some((v) => v === "")) {
@@ -832,10 +848,24 @@
         error.textContent = "A set can't be tied - one team must win each set.";
         return;
       }
-      await window.Results.adminSetResult(fixture, oldResult, t1, t2);
-      if (oldResult) overrideForms.delete(oldResult.id);
-      else enterScoreFixtures.delete(fixture.id);
-      render();
+
+      isSaving = true;
+      saveBtn.disabled = true;
+      saveBtn.textContent = "Saving...";
+      error.hidden = true;
+      try {
+        await window.Results.adminSetResult(fixture, oldResult, t1, t2);
+        if (oldResult) overrideForms.delete(oldResult.id);
+        else enterScoreFixtures.delete(fixture.id);
+        render();
+      } catch (err) {
+        console.error(err);
+        isSaving = false;
+        saveBtn.disabled = false;
+        saveBtn.textContent = saveLabel;
+        error.hidden = false;
+        error.textContent = "Couldn't save - check your connection and try again. Your scores are still here.";
+      }
     });
 
     return form;

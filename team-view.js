@@ -2,7 +2,7 @@
 // shows that team's fixtures with score submission / confirmation / dispute.
 // Write-path logic lives in results.js - this file is DOM glue only.
 (function () {
-  const { el, qs, scoreGrid, scoreInput, wireEnterAdvance } = window.Render;
+  const { el, qs, scoreGrid, scoreInput, wireAutoAdvance } = window.Render;
   const { dbList } = window.DB;
 
   const app = document.getElementById("app");
@@ -349,7 +349,11 @@
   function submitForm(fixture, isTeam1, oppTeam) {
     const myInputs = [1, 2, 3].map(() => scoreInput());
     const oppInputs = [1, 2, 3].map(() => scoreInput());
-    wireEnterAdvance([...myInputs, ...oppInputs]);
+    // Focus order is interleaved (your S1, their S1, your S2, ...) rather
+    // than the grid's row-major DOM order (your 3 sets, then theirs) -
+    // matches how a set is actually scored: both teams' numbers for one set
+    // before moving to the next set.
+    wireAutoAdvance([myInputs[0], oppInputs[0], myInputs[1], oppInputs[1], myInputs[2], oppInputs[2]]);
     const error = el("p", { class: "form-error", hidden: true });
 
     const grid = scoreGrid(opponentBlock(ctx.team, ""), myInputs, opponentBlock(oppTeam, ""), oppInputs);
