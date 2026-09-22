@@ -153,6 +153,7 @@ body{
 .badge-blue{ background:rgba(59,130,246,0.16); color:#9ec5ff; }
 .badge-amber{ background:rgba(245,158,11,0.16); color:#ffd28a; }
 .badge-green{ background:rgba(34,197,94,0.16); color:#8de9ac; }
+.badge-danger{ background:rgba(239,68,68,0.16); color:#ffb4b4; }
 
 /* league detail */
 .detail-header{ display:flex; align-items:center; gap:10px; margin-bottom:14px; flex-wrap:wrap; }
@@ -330,6 +331,26 @@ body{
     text-align:center; background:linear-gradient(180deg,rgba(245,158,11,0.14),rgba(23,32,50,0.98));
     border-color:rgba(245,158,11,0.4);
 }
+
+/* pending/suspended account notices (register.html/login.html) - a neutral
+   heads-up tone, distinct from .form-error which is reserved for actual
+   input mistakes the visitor can immediately fix. */
+.notice{ text-align:center; }
+.notice-warn{ border-color:rgba(245,158,11,0.35); }
+
+/* owner dashboard - organiser + league management rows (owner.html). Same
+   "bordered div row" idiom as .league-row/.team-row rather than a <table>,
+   for the same reason those use it: it degrades to stacked content on a
+   narrow phone without a horizontal-scroll table ever being needed. */
+.manage-row{
+  display:flex; align-items:center; justify-content:space-between; gap:12px;
+  padding:12px 14px; border:1px solid var(--line-soft); border-radius:var(--radius-sm);
+  flex-wrap:wrap;
+}
+.manage-row-name{ font-weight:700; font-family:var(--font-display); }
+.manage-row-meta{ color:var(--muted); font-size:12.5px; margin-top:2px; }
+.manage-row-assign{ display:flex; align-items:center; gap:8px; }
+.manage-row-assign .input{ width:auto; min-width:160px; }
 
 /* danger zone */
 .danger-card{ border-color:rgba(239,68,68,0.35); }

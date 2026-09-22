@@ -19,9 +19,16 @@
 
   function headers() {
     const { supabaseAnonKey } = window.LEAGUE_CONFIG;
+    // On the organiser/owner pages (register/login/owner/my-leagues), auth.js
+    // is loaded and may hold a signed-in session - use that user's own JWT
+    // so Postgres RLS can see auth.uid() for them. admin.html/team.html
+    // never load auth.js, so window.Auth is undefined there and this always
+    // falls straight through to the anon key, exactly as before this
+    // existed - zero behavior change for either page.
+    const token = (window.Auth && window.Auth.getAccessToken()) || supabaseAnonKey;
     return {
       apikey: supabaseAnonKey,
-      Authorization: `Bearer ${supabaseAnonKey}`,
+      Authorization: `Bearer ${token}`,
       "Content-Type": "application/json"
     };
   }
