@@ -9,23 +9,26 @@
 // there when you recompute, rather than needing hand-written "reverse a
 // game win" logic that would be easy to get subtly wrong).
 //
-// Scoring mode is intentionally not a parameter yet - Traditional
-// Advantage is the only mode this version implements - but every rule
-// lives in its own small pure function (gameWinner/tiebreakWinner) so a
-// future Golden Point mode is a second implementation of the same shape,
-// not a rewrite of reduce()/computeState().
+// Scoring mode is intentionally not a parameter yet - "deuce, one
+// advantage, then golden point" (this club's actual rule - see reduce()'s
+// gamePhase state machine) is the only mode this version implements - but
+// every rule lives in its own small pure function/branch so a future mode
+// (e.g. golden point from 40-40 with no advantage at all) is a variant of
+// the same shape, not a rewrite of reduce()/computeState().
 (function (root) {
   function otherTeam(team) {
     return team === "A" ? "B" : "A";
   }
 
-  // One formula covers plain points AND deuce/advantage: a team wins a
-  // game once it has at least 4 raw points AND leads by at least 2 - e.g.
-  // 4-0/4-1/4-2 win outright, 4-3 is "advantage" (not yet a win), 5-3 wins
-  // from there, 4-4 falls back to "deuce" (not a win). No separate
-  // deuce/advantage branch needed - see pointLabel() for how this raw
-  // count is turned into "0/15/30/40/AD" for display.
-  function gameWinner(points) {
+  // Win check for the "points" phase ONLY - i.e. before either side has
+  // ever reached deuce in this game. A team wins outright once it has at
+  // least 4 raw points AND leads by at least 2 (4-0/4-1/4-2 all win). The
+  // two counts can only ever become equal at 3-3 (40-40) - points increase
+  // one at a time, so there's no way to reach a 4-3 state without passing
+  // through 3-3 first - and reduce() switches to the deuce/advantage/
+  // golden-point state machine right at that 3-3 moment instead of ever
+  // calling this again for the rest of the game.
+  function preDeuceGameWinner(points) {
     if (points.A >= 4 && points.A - points.B >= 2) return "A";
     if (points.B >= 4 && points.B - points.A >= 2) return "B";
     return null;
@@ -60,6 +63,13 @@
       sets: [],
       games: { A: 0, B: 0 },
       points: { A: 0, B: 0 },
+      // gamePhase walks forward through "points" -> "deuce" -> "advantage"
+      // -> "golden" for the current game only, reset to "points" whenever a
+      // game is won. There is only ever ONE advantage opportunity per
+      // deuce - if the advantage is lost, gamePhase goes straight to
+      // "golden" rather than back to "deuce", per this club's rule.
+      gamePhase: "points",
+      advantageTeam: null,
       tiebreak: null,
       tiebreakFirstServer: null,
       setsWon: { A: 0, B: 0 },
@@ -96,15 +106,43 @@
         next.tiebreak = null;
         next.tiebreakFirstServer = null;
         next.points = { A: 0, B: 0 };
+        next.gamePhase = "points";
+        next.advantageTeam = null;
         next.gamesPlayedTotal++;
         if (next.setsWon[tbWinner] >= 2) next.winner = tbWinner;
       }
     } else {
-      next.points[team]++;
-      const gWinner = gameWinner(next.points);
+      let gWinner = null;
+
+      if (next.gamePhase === "golden") {
+        // Sudden death - whoever wins this point wins the game outright.
+        gWinner = team;
+      } else if (next.gamePhase === "advantage") {
+        if (team === next.advantageTeam) {
+          gWinner = team; // held serve on the advantage point -> game
+        } else {
+          // Lost the advantage point - straight to golden point, NOT back
+          // to deuce (only one advantage opportunity per deuce).
+          next.gamePhase = "golden";
+          next.advantageTeam = null;
+        }
+      } else if (next.gamePhase === "deuce") {
+        next.gamePhase = "advantage";
+        next.advantageTeam = team;
+      } else {
+        next.points[team]++;
+        if (next.points.A === 3 && next.points.B === 3) {
+          next.gamePhase = "deuce";
+        } else {
+          gWinner = preDeuceGameWinner(next.points);
+        }
+      }
+
       if (gWinner) {
         next.games[gWinner]++;
         next.points = { A: 0, B: 0 };
+        next.gamePhase = "points";
+        next.advantageTeam = null;
         next.gamesPlayedTotal++;
         if (next.games.A === 6 && next.games.B === 6) {
           next.tiebreak = { A: 0, B: 0 };
@@ -138,20 +176,30 @@
     return events.reduce((state, ev) => reduce(state, ev), initialState(initialServer));
   }
 
-  // Display labels for the current game's points (or the tiebreak's raw
-  // numeric score, when one is active).
-  function pointLabel(points, tiebreak) {
-    if (tiebreak) return { A: String(tiebreak.A), B: String(tiebreak.B) };
+  // Per-side display labels for the current game's points (or the
+  // tiebreak's raw numeric score, when one is active). Takes the whole
+  // state object since deuce/advantage/golden point are phase-based now,
+  // not derivable from raw point counts alone.
+  function pointLabel(state) {
+    if (state.tiebreak) return { A: String(state.tiebreak.A), B: String(state.tiebreak.B) };
+    if (state.gamePhase === "golden") return { A: "GP", B: "GP" };
+    if (state.gamePhase === "advantage") return state.advantageTeam === "A" ? { A: "AD", B: "40" } : { A: "40", B: "AD" };
+    if (state.gamePhase === "deuce") return { A: "40", B: "40" };
     const labels = ["0", "15", "30", "40"];
-    const { A, B } = points;
-    if (A >= 3 && B >= 3) {
-      if (A === B) return { A: "40", B: "40" };
-      return A > B ? { A: "AD", B: "40" } : { A: "40", B: "AD" };
-    }
-    return { A: labels[Math.min(A, 3)], B: labels[Math.min(B, 3)] };
+    return { A: labels[Math.min(state.points.A, 3)], B: labels[Math.min(state.points.B, 3)] };
   }
 
-  const ScorerEngine = { computeState, pointLabel, otherTeam };
+  // A human-readable phase name for the banner in the UI - "" when there's
+  // nothing special to say (plain points, or mid-tiebreak).
+  function gamePhaseLabel(state) {
+    if (state.tiebreak) return "";
+    if (state.gamePhase === "deuce") return "Deuce";
+    if (state.gamePhase === "advantage") return "Advantage";
+    if (state.gamePhase === "golden") return "Golden Point";
+    return "";
+  }
+
+  const ScorerEngine = { computeState, pointLabel, gamePhaseLabel, otherTeam };
   if (typeof module !== "undefined" && module.exports) module.exports = ScorerEngine;
   else root.ScorerEngine = ScorerEngine;
 })(typeof window !== "undefined" ? window : globalThis);

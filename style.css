@@ -367,11 +367,39 @@ body{
   flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center;
   gap:6px; min-height:200px; border-radius:var(--radius); border:2px solid transparent;
   cursor:pointer; font-family:var(--font-body); padding:16px 8px;
+  /* Rapid repeated tapping is the whole point of this control, and mobile
+     Safari reads a fast double-tap as "zoom in" by default, plus adds its
+     own ~300ms tap delay while it waits to see if a second tap is coming -
+     both wrong here. touch-action:manipulation tells the browser this
+     element only cares about single taps/panning, which removes both the
+     double-tap-zoom gesture AND that delay, without touching the page's
+     normal pinch-to-zoom (that's a separate gesture, untouched, and this
+     property only applies to this element, not the whole page). The
+     select/callout/tap-highlight suppressions below are the same "rapid
+     tapping shouldn't look or feel like a text/link interaction" idea. */
+  touch-action:manipulation;
+  -webkit-user-select:none; user-select:none;
+  -webkit-touch-callout:none;
+  -webkit-tap-highlight-color:transparent;
 }
 .scorer-side:disabled{ opacity:0.6; cursor:not-allowed; }
 .scorer-side.team-a{ background:rgba(34,197,94,0.14); border-color:rgba(34,197,94,0.4); color:#eafff1; }
 .scorer-side.team-b{ background:rgba(59,130,246,0.14); border-color:rgba(59,130,246,0.4); color:#eaf2ff; }
 .scorer-serving{ font-size:11.5px; font-weight:800; letter-spacing:0.03em; text-transform:uppercase; min-height:14px; }
+/* Deuce/Advantage/Golden Point banner, shown above the court. Golden Point
+   gets its own gold treatment (and the court itself gets a matching glow
+   via .scorer-court.golden below) since it's the deciding point of the
+   game and the brief specifically calls for it to stand out. */
+.scorer-phase-banner{
+  text-align:center; font-family:var(--font-display); font-weight:800; font-size:15px;
+  letter-spacing:0.03em; text-transform:uppercase; padding:10px; border-radius:var(--radius-sm);
+  background:rgba(255,255,255,0.04); color:var(--muted); margin-bottom:-4px;
+}
+.scorer-phase-banner.golden{
+  background:linear-gradient(135deg,rgba(245,158,11,0.22),rgba(245,158,11,0.08));
+  color:#ffd28a; border:1px solid rgba(245,158,11,0.5);
+}
+.scorer-court.golden .scorer-side{ border-color:rgba(245,158,11,0.6); box-shadow:0 0 0 1px rgba(245,158,11,0.3); }
 .scorer-team-name{ font-family:var(--font-display); font-weight:800; font-size:16px; text-align:center; overflow-wrap:break-word; }
 .scorer-point{ font-family:var(--font-display); font-weight:800; font-size:56px; line-height:1; }
 .scorer-games{ font-size:13px; color:var(--muted); }

@@ -94,13 +94,27 @@
 
     function liveView() {
       const state = window.ScorerEngine.computeState(match.initialServer, match.events);
-      const labels = window.ScorerEngine.pointLabel(state.points, state.tiebreak);
+      const labels = window.ScorerEngine.pointLabel(state);
+      const phaseLabel = window.ScorerEngine.gamePhaseLabel(state);
+      const isGolden = state.gamePhase === "golden";
       const setNumber = state.sets.length + 1;
 
-      const court = el("div", { class: "scorer-court" }, [
+      const court = el("div", { class: `scorer-court${isGolden ? " golden" : ""}` }, [
         scorerSide("A", match.teamAName, labels.A, state.games.A, state.server === "A", !!state.winner),
         scorerSide("B", match.teamBName, labels.B, state.games.B, state.server === "B", !!state.winner)
       ]);
+
+      // "Deuce" and "Golden Point" apply to both sides equally; "Advantage"
+      // names whoever actually holds it. Golden Point gets its own visual
+      // treatment (see .scorer-phase-banner.golden) since it's the
+      // deciding point of the game.
+      const phaseBanner = phaseLabel
+        ? el(
+            "div",
+            { class: `scorer-phase-banner${isGolden ? " golden" : ""}` },
+            phaseLabel === "Advantage" ? `ADVANTAGE - ${state.advantageTeam === "A" ? match.teamAName : match.teamBName}` : phaseLabel.toUpperCase()
+          )
+        : null;
 
       const header = el("div", { class: "detail-header" }, [
         el("h2", {}, state.winner ? "Match complete" : `Set ${Math.min(setNumber, 3)}${state.tiebreak ? " - Tiebreak" : ""}`)
@@ -118,7 +132,7 @@
         el("button", { class: "btn btn-danger", type: "button", onclick: confirmReset }, "Reset match")
       ]);
 
-      return el("div", { class: "stack" }, [header, winnerBanner, court, actions, matchOverview(state, match), testingPanel(state)]);
+      return el("div", { class: "stack" }, [header, winnerBanner, phaseBanner, court, actions, matchOverview(state, match), testingPanel(state, match)]);
     }
 
     function scorerSide(team, name, pointLabel, games, isServing, matchOver) {
@@ -163,11 +177,20 @@
       ]);
     }
 
-    function testingPanel(state) {
+    function testingPanel(state, match) {
+      const phaseText =
+        state.gamePhase === "advantage"
+          ? `Advantage (${state.advantageTeam === "A" ? match.teamAName : match.teamBName})`
+          : state.gamePhase === "deuce"
+          ? "Deuce"
+          : state.gamePhase === "golden"
+          ? "Golden point"
+          : "Normal";
       const rows = [
         ["Current set", String(Math.min(state.sets.length + 1, 3))],
         ["Current games", `${state.games.A}-${state.games.B}`],
         ["Current points", `${state.points.A}-${state.points.B}`],
+        ["Game phase", phaseText],
         ["Sets won", `${state.setsWon.A}-${state.setsWon.B}`],
         ["Current server", state.server === "A" ? "Team A" : "Team B"],
         ["Tiebreak active", state.tiebreak ? "Yes" : "No"],
