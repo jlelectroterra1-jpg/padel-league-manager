@@ -1,10 +1,11 @@
 // Owner dashboard (owner.html): platform-wide stats, an organisers table
-// (approve/suspend/reactivate), and a leagues table (open + assign to an
-// organiser). DOM glue only - reuses the existing admin.html league-card
-// look/link, never rebuilds it.
+// (approve/suspend/reactivate), and a leagues table (open + manage admins).
+// A league can now have multiple admins (see migration_007's league_admins
+// junction table) - DOM glue only, reuses the existing admin.html
+// league-card look/link, never rebuilds it.
 (function () {
   const { el, formatDate, badge } = window.Render;
-  const { dbList, dbUpdate } = window.DB;
+  const { dbList, dbUpdate, dbInsert, dbDelete } = window.DB;
 
   const app = document.getElementById("app");
 
@@ -28,7 +29,7 @@
     const owner = await window.Auth.requireRole(["owner"]);
     if (!owner) return; // requireRole already redirected
 
-    const [organisers, leagues] = await Promise.all([dbList("organisers"), dbList("leagues")]);
+    const [organisers, leagues, leagueAdmins] = await Promise.all([dbList("organisers"), dbList("leagues"), dbList("league_admins")]);
     app.innerHTML = "";
 
     app.appendChild(
@@ -39,8 +40,8 @@
     );
 
     app.appendChild(statsStrip(organisers, leagues));
-    app.appendChild(organisersCard(organisers, leagues));
-    app.appendChild(leaguesCard(leagues, organisers));
+    app.appendChild(organisersCard(organisers, leagueAdmins));
+    app.appendChild(leaguesCard(leagues, organisers, leagueAdmins));
   }
 
   async function logout() {
@@ -67,10 +68,10 @@
 
   // ---------- Organisers ----------
 
-  function organisersCard(organisers, leagues) {
+  function organisersCard(organisers, leagueAdmins) {
     const rows = organisers
       .filter((o) => o.role === "organiser")
-      .map((o) => organiserRow(o, leagues));
+      .map((o) => organiserRow(o, leagueAdmins));
     return el("div", { class: "card" }, [
       el("h3", {}, `Organisers (${rows.length})`),
       rows.length ? el("div", { class: "stack" }, rows) : el("p", { class: "empty-state" }, "No organisers have registered yet.")
@@ -81,8 +82,8 @@
     return { pending: "amber", active: "green", suspended: "danger" }[status] || "neutral";
   }
 
-  function organiserRow(organiser, leagues) {
-    const leagueCount = leagues.filter((l) => l.organiser_id === organiser.id).length;
+  function organiserRow(organiser, leagueAdmins) {
+    const leagueCount = leagueAdmins.filter((a) => a.organiser_id === organiser.id).length;
     const actions = [];
     if (organiser.status === "pending") {
       actions.push(el("button", { class: "btn btn-primary small", type: "button", onclick: () => setOrganiserStatus(organiser, "active") }, "Approve"));
@@ -115,10 +116,10 @@
 
   // ---------- Leagues ----------
 
-  function leaguesCard(leagues, organisers) {
+  function leaguesCard(leagues, organisers, leagueAdmins) {
     const activeOrganisers = organisers.filter((o) => o.role === "organiser" && o.status === "active");
     const organisersById = Object.fromEntries(organisers.map((o) => [o.id, o]));
-    const rows = leagues.map((l) => leagueRow(l, activeOrganisers, organisersById));
+    const rows = leagues.map((l) => leagueRow(l, leagueAdmins, activeOrganisers, organisersById));
     return el("div", { class: "card" }, [
       el("h3", {}, `Leagues (${leagues.length})`),
       rows.length ? el("div", { class: "stack" }, rows) : el("p", { class: "empty-state" }, "No leagues yet.")
@@ -129,37 +130,111 @@
     return { draft: "neutral", active: "blue", playoffs: "amber", completed: "green", archived: "neutral" }[status] || "neutral";
   }
 
-  function leagueRow(league, activeOrganisers, organisersById) {
-    const assignedOrganiser = league.organiser_id ? organisersById[league.organiser_id] : null;
-
-    const select = el(
-      "select",
-      { class: "input" },
-      [el("option", { value: "" }, "Unassigned"), ...activeOrganisers.map((o) => el("option", { value: o.id }, o.name))]
-    );
-    select.value = league.organiser_id || "";
-    select.addEventListener("change", () => assignLeague(league, select.value || null));
+  function leagueRow(league, leagueAdmins, activeOrganisers, organisersById) {
+    const admins = leagueAdmins
+      .filter((a) => a.league_id === league.id)
+      .map((a) => organisersById[a.organiser_id])
+      .filter(Boolean);
 
     return el("div", { class: "manage-row" }, [
       el("div", {}, [
         el("div", { class: "manage-row-name" }, [league.name, badge(league.status, statusKind(league.status))]),
         el("div", { class: "manage-row-meta" }, [
-          assignedOrganiser ? assignedOrganiser.name : "Unassigned",
+          admins.length ? `Admins: ${admins.map((o) => o.name).join(", ")}` : "Unassigned",
           league.num_teams ? ` · ${league.num_teams} teams target` : "",
           league.start_date ? ` · starts ${formatDate(league.start_date)}` : ""
         ].join(""))
       ]),
       el("div", { class: "manage-row-assign" }, [
-        el("a", { class: "btn btn-ghost small", href: `admin.html#/league/${league.id}/teams` }, "Open league"),
-        select
+        el(
+          "button",
+          { class: "btn btn-ghost small", type: "button", onclick: () => openManageAdmins(league, leagueAdmins, activeOrganisers, organisersById) },
+          "Manage admins"
+        ),
+        el("a", { class: "btn btn-ghost small", href: `admin.html#/league/${league.id}/teams` }, "Open league")
       ])
     ]);
   }
 
-  // Only ever PATCHes leagues.organiser_id - nothing else about the league
-  // (teams/fixtures/scores/standings/settings) is touched by this call.
-  async function assignLeague(league, organiserId) {
-    await dbUpdate("leagues", league.id, { organiser_id: organiserId });
-    render();
+  async function openManageAdmins(league, leagueAdmins, activeOrganisers, organisersById) {
+    const current = leagueAdmins.filter((a) => a.league_id === league.id);
+    await manageAdminsModal(league, current, activeOrganisers, organisersById);
+    render(); // refresh admin lists/counts everywhere on the dashboard
+  }
+
+  // Stays open across multiple add/remove actions (unlike the confirm-once
+  // modals elsewhere in this app - team-view.js's confirmSubmitModal,
+  // admin.js's forfeitConfirmModal) - each action persists immediately and
+  // re-renders just this panel's own body; only closing it hands control
+  // back to the caller, which then refreshes the main dashboard.
+  function manageAdminsModal(league, initialAdmins, activeOrganisers, organisersById) {
+    return new Promise((resolve) => {
+      let admins = initialAdmins.slice();
+      const closeBtn = el("button", { class: "btn btn-ghost small", type: "button" }, "Close");
+      const body = el("div", {}, []);
+      const card = el("div", { class: "card modal-card" }, [el("h3", {}, `Manage admins - ${league.name}`), body, el("div", { class: "row-actions modal-actions" }, [closeBtn])]);
+      const backdrop = el("div", { class: "modal-backdrop" }, [card]);
+
+      function renderBody() {
+        body.innerHTML = "";
+        const adminRows = admins.length
+          ? admins.map((a) => {
+              const organiser = organisersById[a.organiser_id];
+              return el("div", { class: "row-actions", style: "justify-content:space-between;" }, [
+                el("span", {}, organiser ? organiser.name : "Unknown organiser"),
+                el("button", { class: "btn btn-danger small", type: "button", onclick: () => removeAdmin(a) }, "Remove")
+              ]);
+            })
+          : [el("p", { class: "empty-state" }, "No admins assigned yet.")];
+
+        const assignedIds = new Set(admins.map((a) => a.organiser_id));
+        const available = activeOrganisers.filter((o) => !assignedIds.has(o.id));
+        const select = el(
+          "select",
+          { class: "input" },
+          available.length ? available.map((o) => el("option", { value: o.id }, o.name)) : [el("option", { value: "" }, "No more organisers to add")]
+        );
+        const addBtn = el(
+          "button",
+          { class: "btn btn-primary small", type: "button", disabled: !available.length, onclick: () => addAdmin(select.value) },
+          "+ Add admin"
+        );
+
+        body.appendChild(el("div", { class: "stack" }, [...adminRows, el("div", { class: "field-row", style: "align-items:center;" }, [select, addBtn])]));
+      }
+
+      async function addAdmin(organiserId) {
+        if (!organiserId) return;
+        const saved = await dbInsert("league_admins", { league_id: league.id, organiser_id: organiserId, role: "admin" });
+        admins.push(saved);
+        renderBody();
+      }
+
+      async function removeAdmin(admin) {
+        await dbDelete("league_admins", admin.id);
+        admins = admins.filter((a) => a.id !== admin.id);
+        renderBody();
+      }
+
+      function close() {
+        document.removeEventListener("keydown", onKeydown);
+        document.body.style.overflow = prevOverflow;
+        backdrop.remove();
+        resolve();
+      }
+      function onKeydown(e) {
+        if (e.key === "Escape") close();
+      }
+      closeBtn.addEventListener("click", close);
+      backdrop.addEventListener("click", (e) => {
+        if (e.target === backdrop) close();
+      });
+      document.addEventListener("keydown", onKeydown);
+
+      const prevOverflow = document.body.style.overflow;
+      document.body.style.overflow = "hidden";
+      renderBody();
+      document.body.appendChild(backdrop);
+    });
   }
 })();

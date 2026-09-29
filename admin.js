@@ -875,9 +875,15 @@
           el("p", { class: "muted small" }, `Submitted by ${submittedBy ? submittedBy.name : "unknown team"}`),
           el("div", { class: "row-actions" }, [
             el("button", { class: "btn btn-primary small", type: "button", onclick: () => forceConfirm(result) }, "Force confirm"),
-            el("button", { class: "btn btn-ghost small", type: "button", onclick: () => toggleOverride(result.id) }, "Correct score")
+            el("button", { class: "btn btn-ghost small", type: "button", onclick: () => toggleOverride(result.id) }, "Correct score"),
+            el(
+              "button",
+              { class: "btn-subtle", type: "button", onclick: () => toggleForfeitPicker(fixture.id) },
+              forfeitPickerFixtures.has(fixture.id) ? "Cancel" : "Record forfeit"
+            )
           ]),
-          overrideForms.has(result.id) ? overrideForm(fixture, result, false, teamsById) : null
+          overrideForms.has(result.id) ? overrideForm(fixture, result, false, teamsById) : null,
+          forfeitPickerFixtures.has(fixture.id) ? forfeitPickerCard(fixture, teamsById) : null
         ]);
       })
     );
@@ -915,7 +921,13 @@
           ]),
           el("p", { class: "muted small" }, `Sets: ${window.Render.formatSets(result)}`),
           result.dispute_reason ? el("p", { class: "muted small" }, `Reason given: ${result.dispute_reason}`) : null,
-          overrideForm(fixture, result, true, teamsById)
+          overrideForm(fixture, result, true, teamsById),
+          el(
+            "button",
+            { class: "btn-subtle", type: "button", onclick: () => toggleForfeitPicker(fixture.id) },
+            forfeitPickerFixtures.has(fixture.id) ? "Cancel" : "Record forfeit instead"
+          ),
+          forfeitPickerFixtures.has(fixture.id) ? forfeitPickerCard(fixture, teamsById) : null
         ]);
       })
     );

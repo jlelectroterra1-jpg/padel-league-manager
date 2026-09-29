@@ -1,8 +1,9 @@
-// An organiser's own leagues (my-leagues.html). Only ever fetches leagues
-// scoped to the signed-in organiser's own id - a client-side query filter,
-// not a new database-enforced boundary (see migration_005's closing
-// comment for why). "Open league" reuses the existing admin.html console
-// unchanged.
+// An organiser's own leagues (my-leagues.html), across possibly-shared
+// leagues (see migration_007 - a league can have multiple admins now).
+// Genuinely server-filtered: league_admins is fetched with the caller's own
+// JWT, so RLS only ever returns rows for their own auth.uid() - not a
+// client-side filter over a full fetch. "Open league" reuses the existing
+// admin.html console unchanged.
 (function () {
   const { el, formatDate, badge } = window.Render;
   const { dbList } = window.DB;
@@ -29,7 +30,14 @@
     const organiser = await window.Auth.requireRole(["organiser"], { mustBeActive: true });
     if (!organiser) return; // requireRole already redirected
 
-    const leagues = await dbList("leagues", { organiser_id: `eq.${organiser.id}` });
+    // Two steps rather than one filtered leagues query: league_admins' own
+    // RLS policy is what actually enforces "only this organiser's rows",
+    // then leagues is fetched by exactly those ids - PostgREST doesn't
+    // support filtering leagues through the join in a single plain query
+    // the way this app's raw-fetch db.js talks to it.
+    const memberships = await dbList("league_admins", { organiser_id: `eq.${organiser.id}` });
+    const leagueIds = memberships.map((m) => m.league_id);
+    const leagues = leagueIds.length ? await dbList("leagues", { id: `in.(${leagueIds.join(",")})` }) : [];
     app.innerHTML = "";
 
     app.appendChild(
