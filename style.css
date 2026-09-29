@@ -357,6 +357,30 @@ body{
 .manage-row-assign{ display:flex; align-items:center; gap:8px; }
 .manage-row-assign .input{ width:auto; min-width:160px; }
 
+/* Scorer Lab (owner.html only, prototype) - two huge tap zones. Deliberately
+   plain <button>s rather than anything fancier so the whole area is one big
+   tap target on touch/watch-sized screens, not just a small label inside a
+   bigger box. Stays side-by-side (never stacks) even on a narrow phone -
+   two thumbs, one per side, is the actual use case this is designed for. */
+.scorer-court{ display:flex; gap:10px; margin-bottom:16px; }
+.scorer-side{
+  flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center;
+  gap:6px; min-height:200px; border-radius:var(--radius); border:2px solid transparent;
+  cursor:pointer; font-family:var(--font-body); padding:16px 8px;
+}
+.scorer-side:disabled{ opacity:0.6; cursor:not-allowed; }
+.scorer-side.team-a{ background:rgba(34,197,94,0.14); border-color:rgba(34,197,94,0.4); color:#eafff1; }
+.scorer-side.team-b{ background:rgba(59,130,246,0.14); border-color:rgba(59,130,246,0.4); color:#eaf2ff; }
+.scorer-serving{ font-size:11.5px; font-weight:800; letter-spacing:0.03em; text-transform:uppercase; min-height:14px; }
+.scorer-team-name{ font-family:var(--font-display); font-weight:800; font-size:16px; text-align:center; overflow-wrap:break-word; }
+.scorer-point{ font-family:var(--font-display); font-weight:800; font-size:56px; line-height:1; }
+.scorer-games{ font-size:13px; color:var(--muted); }
+@media (max-width: 480px){
+  .scorer-side{ min-height:150px; padding:10px 4px; }
+  .scorer-point{ font-size:40px; }
+  .scorer-team-name{ font-size:13px; }
+}
+
 /* danger zone */
 .danger-card{ border-color:rgba(239,68,68,0.35); }
 .danger-card .input{ margin:10px 0; }

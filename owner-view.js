@@ -10,6 +10,16 @@
   const app = document.getElementById("app");
 
   document.addEventListener("DOMContentLoaded", render);
+  window.addEventListener("hashchange", render);
+
+  // "Scorer Lab" (owner-only live scoring prototype - see scorer-engine.js/
+  // scorer-lab-view.js) is a second tab here, same #/tab hash pattern
+  // admin.js uses. Switching tabs re-runs this render(), but ScorerLab owns
+  // its own independent re-render loop once mounted - a point tap never
+  // comes back through here, so it never re-fetches organisers/leagues.
+  function parseTab() {
+    return location.hash.replace(/^#\/?/, "") === "scorer-lab" ? "scorer-lab" : "dashboard";
+  }
 
   async function render() {
     if (!app.hasChildNodes()) {
@@ -29,7 +39,7 @@
     const owner = await window.Auth.requireRole(["owner"]);
     if (!owner) return; // requireRole already redirected
 
-    const [organisers, leagues, leagueAdmins] = await Promise.all([dbList("organisers"), dbList("leagues"), dbList("league_admins")]);
+    const tab = parseTab();
     app.innerHTML = "";
 
     app.appendChild(
@@ -38,7 +48,21 @@
         el("button", { class: "btn btn-ghost small", type: "button", onclick: () => logout() }, "Log out")
       ])
     );
+    app.appendChild(
+      el("div", { class: "tabs-inline" }, [
+        el("a", { class: `tab-inline ${tab === "dashboard" ? "active" : ""}`, href: "#/dashboard" }, "Dashboard"),
+        el("a", { class: `tab-inline ${tab === "scorer-lab" ? "active" : ""}`, href: "#/scorer-lab" }, "Scorer Lab")
+      ])
+    );
 
+    if (tab === "scorer-lab") {
+      const container = el("div", {});
+      app.appendChild(container);
+      window.ScorerLab.mount(container);
+      return;
+    }
+
+    const [organisers, leagues, leagueAdmins] = await Promise.all([dbList("organisers"), dbList("leagues"), dbList("league_admins")]);
     app.appendChild(statsStrip(organisers, leagues));
     app.appendChild(organisersCard(organisers, leagueAdmins));
     app.appendChild(leaguesCard(leagues, organisers, leagueAdmins));
