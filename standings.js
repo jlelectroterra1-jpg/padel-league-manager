@@ -7,7 +7,10 @@
 // point, so a team's total points ARE its total sets won across all played
 // matches - there's no separate configurable win/draw/loss points system.
 // A match is a win for whichever team takes at least 2 of the 3 sets; there
-// are no draws.
+// are no draws. The one exception is a forfeit (admin/organiser-only,
+// result_type='forfeit') - a flat 2 points to the opponent and 0 to the
+// forfeiting team, with no sets ever recorded either way; see the
+// result_type branch below.
 (function (root) {
   // Defensive dedup: under correct app usage there's at most one
   // non-superseded confirmed result per fixture, but this guards standings
@@ -57,6 +60,21 @@
       const t1 = table[fx.team1_id];
       const t2 = table[fx.team2_id];
       if (!t1 || !t2) return;
+
+      // Forfeit: flat 2 league points to the opponent, 0 to the forfeiting
+      // team, no set scores exist so setsWon/setsLost are never touched -
+      // this is a genuinely different points model from a played match
+      // (where points ARE sets won), not derived from setsWon at all.
+      if (r.result_type === "forfeit") {
+        t1.played++;
+        t2.played++;
+        const winner = r.forfeiting_team_id === fx.team1_id ? t2 : t1;
+        const loser = r.forfeiting_team_id === fx.team1_id ? t1 : t2;
+        winner.won++;
+        winner.pts += 2;
+        loser.lost++;
+        return;
+      }
 
       const sw = setsWon(r);
       t1.played++;

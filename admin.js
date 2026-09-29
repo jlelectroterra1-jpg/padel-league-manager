@@ -369,20 +369,30 @@
   function playoffMatchRow(fixture, results, teamsById) {
     const result = window.Results.activeResultForFixture(fixture.id, results);
     const canEnter = fixture.team1_id && fixture.team2_id;
+    const isForfeit = result && result.result_type === "forfeit";
 
     const row = el("div", { class: "fixture-row" }, [
       matchup(teamsById[fixture.team1_id], teamsById[fixture.team2_id]),
-      resultBadge(result),
+      isForfeit ? forfeitSummary(fixture, result, teamsById) : resultBadge(result),
       canEnter && !result
-        ? el("button", { class: "btn btn-ghost small", type: "button", onclick: () => toggleEnterScore(fixture.id) }, enterScoreFixtures.has(fixture.id) ? "Cancel" : "Enter score")
+        ? el("div", { class: "row-actions" }, [
+            el("button", { class: "btn btn-ghost small", type: "button", onclick: () => toggleEnterScore(fixture.id) }, enterScoreFixtures.has(fixture.id) ? "Cancel" : "Enter score"),
+            el("button", { class: "btn-subtle", type: "button", onclick: () => toggleForfeitPicker(fixture.id) }, forfeitPickerFixtures.has(fixture.id) ? "Cancel" : "Record forfeit")
+          ])
         : null,
-      canEnter && result
+      canEnter && result && !isForfeit
         ? el("button", { class: "btn btn-ghost small", type: "button", onclick: () => toggleOverride(result.id) }, "Correct score")
+        : null,
+      canEnter && isForfeit
+        ? el("button", { class: "btn btn-ghost small", type: "button", onclick: () => undoForfeitFlow(result, fixture) }, "Undo forfeit")
         : null
     ]);
 
     if (canEnter && !result && enterScoreFixtures.has(fixture.id)) {
       return el("div", { class: "fixture-block" }, [row, overrideForm(fixture, null, false, teamsById)]);
+    }
+    if (canEnter && !result && forfeitPickerFixtures.has(fixture.id)) {
+      return el("div", { class: "fixture-block" }, [row, forfeitPickerCard(fixture, teamsById)]);
     }
     if (canEnter && result && overrideForms.has(result.id)) {
       return el("div", { class: "fixture-block" }, [row, overrideForm(fixture, result, false, teamsById)]);
@@ -643,6 +653,7 @@
   }
 
   const enterScoreFixtures = new Set();
+  const forfeitPickerFixtures = new Set();
 
   function weekCard(week, matches, teamsById, results) {
     matches.sort((a, b) => (a.time_slot || 0) - (b.time_slot || 0) || (a.court || 0) - (b.court || 0));
@@ -656,20 +667,33 @@
             return el("div", { class: "fixture-row muted" }, [teamBlock(teamsById[f.team1_id]), el("span", {}, "has a bye")]);
           }
           const result = window.Results.activeResultForFixture(f.id, results);
+          const isForfeit = result && result.result_type === "forfeit";
           const row = el("div", { class: "fixture-row" }, [
             el("span", { class: "court-tag" }, `Court ${f.court}${matches.length > 1 && f.time_slot > 1 ? ` · slot ${f.time_slot}` : ""}`),
             matchup(teamsById[f.team1_id], teamsById[f.team2_id]),
-            resultBadge(result),
-            !result
-              ? el(
-                  "button",
-                  { class: "btn btn-ghost small", type: "button", onclick: () => toggleEnterScore(f.id) },
-                  enterScoreFixtures.has(f.id) ? "Cancel" : "Enter score"
-                )
+            isForfeit ? forfeitSummary(f, result, teamsById) : resultBadge(result),
+            isForfeit
+              ? el("button", { class: "btn btn-ghost small", type: "button", onclick: () => undoForfeitFlow(result, f) }, "Undo forfeit")
+              : !result
+              ? el("div", { class: "row-actions" }, [
+                  el(
+                    "button",
+                    { class: "btn btn-ghost small", type: "button", onclick: () => toggleEnterScore(f.id) },
+                    enterScoreFixtures.has(f.id) ? "Cancel" : "Enter score"
+                  ),
+                  el(
+                    "button",
+                    { class: "btn-subtle", type: "button", onclick: () => toggleForfeitPicker(f.id) },
+                    forfeitPickerFixtures.has(f.id) ? "Cancel" : "Record forfeit"
+                  )
+                ])
               : null
           ]);
           if (!result && enterScoreFixtures.has(f.id)) {
             return el("div", { class: "fixture-block" }, [row, overrideForm(f, null, false, teamsById)]);
+          }
+          if (!result && forfeitPickerFixtures.has(f.id)) {
+            return el("div", { class: "fixture-block" }, [row, forfeitPickerCard(f, teamsById)]);
           }
           return row;
         })
@@ -679,7 +703,19 @@
 
   function toggleEnterScore(fixtureId) {
     if (enterScoreFixtures.has(fixtureId)) enterScoreFixtures.delete(fixtureId);
-    else enterScoreFixtures.add(fixtureId);
+    else {
+      enterScoreFixtures.add(fixtureId);
+      forfeitPickerFixtures.delete(fixtureId);
+    }
+    render();
+  }
+
+  function toggleForfeitPicker(fixtureId) {
+    if (forfeitPickerFixtures.has(fixtureId)) forfeitPickerFixtures.delete(fixtureId);
+    else {
+      forfeitPickerFixtures.add(fixtureId);
+      enterScoreFixtures.delete(fixtureId);
+    }
     render();
   }
 
@@ -690,6 +726,98 @@
     if (result.confirmation_status === "confirmed") return badge(`${score} confirmed`, "green");
     if (result.confirmation_status === "disputed") return badge(`${score} disputed`, "amber");
     return badge(`${score} pending`, "blue");
+  }
+
+  // Inline "which team forfeited?" picker shown in place of the score-entry
+  // form when "Record forfeit" is clicked - a deliberately separate, smaller
+  // step from the confirmation modal (forfeitConfirmModal) that actually
+  // saves anything, per the required "ask which team, then confirm" flow.
+  function forfeitPickerCard(fixture, teamsById) {
+    const team1 = teamsById[fixture.team1_id];
+    const team2 = teamsById[fixture.team2_id];
+    return el("div", { class: "card inline-form" }, [
+      el("p", { class: "muted small" }, "Which team forfeited this match?"),
+      el("div", { class: "row-actions" }, [
+        el(
+          "button",
+          { class: "btn btn-ghost small", type: "button", onclick: () => recordForfeitFlow(fixture, fixture.team1_id, team1, team2) },
+          team1 ? team1.name : "Team 1"
+        ),
+        el(
+          "button",
+          { class: "btn btn-ghost small", type: "button", onclick: () => recordForfeitFlow(fixture, fixture.team2_id, team2, team1) },
+          team2 ? team2.name : "Team 2"
+        ),
+        el("button", { class: "btn btn-ghost small", type: "button", onclick: () => toggleForfeitPicker(fixture.id) }, "Cancel")
+      ])
+    ]);
+  }
+
+  async function recordForfeitFlow(fixture, forfeitingTeamId, forfeitingTeam, winningTeam) {
+    const confirmed = await forfeitConfirmModal(forfeitingTeam, winningTeam);
+    if (!confirmed) return;
+    await window.Results.recordForfeit(fixture, forfeitingTeamId);
+    forfeitPickerFixtures.delete(fixture.id);
+    render();
+  }
+
+  // Same promise-resolves-on-button-click modal pattern as team-view.js's
+  // confirmSubmitModal, appended straight to <body> so opening/closing it
+  // never touches the fixture list underneath.
+  function forfeitConfirmModal(forfeitingTeam, winningTeam) {
+    return new Promise((resolve) => {
+      const cancelBtn = el("button", { class: "btn btn-ghost small", type: "button" }, "Cancel");
+      const confirmBtn = el("button", { class: "btn btn-primary small", type: "button" }, "Confirm forfeit");
+      const card = el("div", { class: "card modal-card" }, [
+        el("h3", {}, "Confirm forfeit"),
+        el("p", {}, `${forfeitingTeam ? forfeitingTeam.name : "This team"} will be recorded as having forfeited this match.`),
+        el("p", {}, `${winningTeam ? winningTeam.name : "The opponent"} will receive:`),
+        el("ul", { class: "modal-list" }, [el("li", {}, "Match win"), el("li", {}, "2 league points")]),
+        el("p", { class: "muted small" }, "No set scores will be recorded."),
+        el("div", { class: "row-actions modal-actions" }, [cancelBtn, confirmBtn])
+      ]);
+      const backdrop = el("div", { class: "modal-backdrop" }, [card]);
+
+      const prevOverflow = document.body.style.overflow;
+      document.body.style.overflow = "hidden";
+
+      function close(result) {
+        document.removeEventListener("keydown", onKeydown);
+        document.body.style.overflow = prevOverflow;
+        backdrop.remove();
+        resolve(result);
+      }
+      function onKeydown(e) {
+        if (e.key === "Escape") close(false);
+      }
+      cancelBtn.addEventListener("click", () => close(false));
+      confirmBtn.addEventListener("click", () => close(true));
+      backdrop.addEventListener("click", (e) => {
+        if (e.target === backdrop) close(false);
+      });
+      document.addEventListener("keydown", onKeydown);
+
+      document.body.appendChild(backdrop);
+    });
+  }
+
+  // Replaces resultBadge() wherever the active result is a forfeit - a
+  // forfeit is never "N-M confirmed", so it gets its own summary instead of
+  // trying to force it through the sets-based badge.
+  function forfeitSummary(fixture, result, teamsById) {
+    const forfeitingTeam = teamsById[result.forfeiting_team_id];
+    const winnerId = result.forfeiting_team_id === fixture.team1_id ? fixture.team2_id : fixture.team1_id;
+    const winner = teamsById[winnerId];
+    return el("div", {}, [
+      badge("win by forfeit", "green"),
+      el("div", { class: "muted small" }, `${forfeitingTeam ? forfeitingTeam.name : "A team"} forfeited · ${winner ? winner.name : "opponent"} wins`)
+    ]);
+  }
+
+  async function undoForfeitFlow(result, fixture) {
+    if (!confirm("Undo this forfeit? The fixture will return to its normal not-yet-played state.")) return;
+    await window.Results.undoForfeit(result, fixture);
+    render();
   }
 
   // Team name stays prominent; both players from that team's existing

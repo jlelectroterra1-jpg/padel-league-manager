@@ -77,6 +77,43 @@
     return saved;
   }
 
+  // Admin/organiser-only: records that `forfeitingTeamId` forfeited this
+  // fixture. No set scores are ever stored for a forfeit - standings.js
+  // awards the opponent a flat 2 league points (not derived from sets) and
+  // never touches setsWon/setsLost for either team. Same "supersede whatever
+  // is currently active" shape as adminSetResult, so at most one live result
+  // per fixture holds even if a team had already submitted something.
+  async function recordForfeit(fixture, forfeitingTeamId) {
+    const existing = await dbList("results", { fixture_id: `eq.${fixture.id}` });
+    for (const r of existing.filter((r) => !r.superseded)) await dbUpdate("results", r.id, { superseded: true });
+    const saved = await dbInsert("results", {
+      fixture_id: fixture.id,
+      result_type: "forfeit",
+      forfeiting_team_id: forfeitingTeamId,
+      submitted_by_team_id: null,
+      confirmation_status: "confirmed",
+      confirmed_at: new Date().toISOString(),
+      admin_override: true,
+      superseded: false
+    });
+    await dbUpdate("fixtures", fixture.id, { status: "completed" });
+    await afterConfirmed(fixture, saved);
+    return saved;
+  }
+
+  // Reverses a forfeit entered by mistake: supersedes its result row (no
+  // replacement inserted) and puts the fixture back to its normal
+  // not-yet-played state - since standings.js always recomputes from
+  // scratch off non-superseded confirmed results, this alone is enough to
+  // correctly undo the +1 played / +1 won-or-lost / 2 pts, no manual
+  // reversal math needed. Doesn't un-advance a playoff winner who already
+  // moved on to the next round - same pre-existing limitation "correct
+  // score" has always had for playoffs, not something forfeit introduces.
+  async function undoForfeit(result, fixture) {
+    await dbUpdate("results", result.id, { superseded: true });
+    await dbUpdate("fixtures", fixture.id, { status: "scheduled" });
+  }
+
   // Playoff-only follow-through: once a QF/SF/F result is confirmed, push the
   // winner into whichever fixture/slot it feeds (see playoffs.js for how
   // next_fixture_id/next_slot get set up when the bracket is built), and once
@@ -85,8 +122,13 @@
     if (!fixture || fixture.stage === "league") return;
 
     if (fixture.next_fixture_id) {
-      const sw = window.Standings.setsWon(result);
-      const winnerId = sw.team1 >= 2 ? fixture.team1_id : sw.team2 >= 2 ? fixture.team2_id : null;
+      let winnerId;
+      if (result.result_type === "forfeit") {
+        winnerId = result.forfeiting_team_id === fixture.team1_id ? fixture.team2_id : fixture.team1_id;
+      } else {
+        const sw = window.Standings.setsWon(result);
+        winnerId = sw.team1 >= 2 ? fixture.team1_id : sw.team2 >= 2 ? fixture.team2_id : null;
+      }
       if (winnerId) {
         const patch = fixture.next_slot === 2 ? { team2_id: winnerId } : { team1_id: winnerId };
         await dbUpdate("fixtures", fixture.next_fixture_id, patch);
@@ -108,7 +150,7 @@
     return candidates.reduce((latest, r) => (new Date(r.created_at) > new Date(latest.created_at) ? r : latest));
   }
 
-  const Results = { submitResult, confirmResult, disputeResult, adminSetResult, activeResultForFixture };
+  const Results = { submitResult, confirmResult, disputeResult, adminSetResult, recordForfeit, undoForfeit, activeResultForFixture };
   if (typeof module !== "undefined" && module.exports) module.exports = Results;
   else root.Results = Results;
 })(typeof window !== "undefined" ? window : globalThis);

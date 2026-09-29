@@ -134,6 +134,11 @@ body{
    44px full-size minimum without breaking that layout, but the old 27px was
    too cramped for a thumb on a real phone. */
 .btn.small{ padding:8px 14px; min-height:38px; font-size:12.5px; }
+/* "Record forfeit" next to "Enter score" - a real 38px tap target like any
+   other .small button, but text-only/no border so it visibly reads as the
+   secondary, less-reached-for action rather than competing with it. */
+.btn-subtle{ background:transparent; border-color:transparent; color:var(--faint); padding:8px 10px; min-height:38px; font-size:12.5px; }
+.btn-subtle:hover{ color:var(--muted); }
 
 /* leagues list */
 .league-row{
