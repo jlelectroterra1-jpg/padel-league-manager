@@ -92,47 +92,72 @@
       rerender();
     }
 
+    // Would `team` win the match if they won the very next point? Answered
+    // by literally asking the engine - simulate that one extra event and
+    // see whether it decides the match - rather than hand-deriving "is
+    // this a match point" from games/sets/phase, which would mean
+    // re-encoding the engine's own win rules a second time here.
+    function wouldWinMatch(team) {
+      const hypothetical = window.ScorerEngine.computeState(match.initialServer, match.events.concat([team]));
+      return hypothetical.winner === team;
+    }
+
+    // One banner, used in both portrait and landscape, covering every
+    // "special state" that's worth calling out: match point takes priority
+    // (most urgent), then tiebreak, then the existing deuce/advantage/
+    // golden point phase. Match complete has its own dedicated
+    // winnerBanner card instead, so this returns "" once the match is over
+    // rather than duplicating that message.
+    function specialStateLabel(state) {
+      if (state.winner) return "";
+      const matchPointA = wouldWinMatch("A");
+      const matchPointB = wouldWinMatch("B");
+      if (matchPointA || matchPointB) return `MATCH POINT - ${matchPointA ? match.teamAName : match.teamBName}`;
+      if (state.tiebreak) return "TIEBREAK";
+      const phase = window.ScorerEngine.gamePhaseLabel(state);
+      if (!phase) return "";
+      return phase === "Advantage" ? `ADVANTAGE - ${state.advantageTeam === "A" ? match.teamAName : match.teamBName}` : phase.toUpperCase();
+    }
+
     function liveView() {
       const state = window.ScorerEngine.computeState(match.initialServer, match.events);
       const labels = window.ScorerEngine.pointLabel(state);
-      const phaseLabel = window.ScorerEngine.gamePhaseLabel(state);
       const isGolden = state.gamePhase === "golden";
       const setNumber = state.sets.length + 1;
+      const bannerText = specialStateLabel(state);
 
       const court = el("div", { class: `scorer-court${isGolden ? " golden" : ""}` }, [
         scorerSide("A", match.teamAName, labels.A, state.games.A, state.server === "A", !!state.winner),
         scorerSide("B", match.teamBName, labels.B, state.games.B, state.server === "B", !!state.winner)
       ]);
 
-      // "Deuce" and "Golden Point" apply to both sides equally; "Advantage"
-      // names whoever actually holds it. Golden Point gets its own visual
-      // treatment (see .scorer-phase-banner.golden) since it's the
-      // deciding point of the game.
-      const phaseBanner = phaseLabel
-        ? el(
-            "div",
-            { class: `scorer-phase-banner${isGolden ? " golden" : ""}` },
-            phaseLabel === "Advantage" ? `ADVANTAGE - ${state.advantageTeam === "A" ? match.teamAName : match.teamBName}` : phaseLabel.toUpperCase()
-          )
-        : null;
+      const phaseBanner = bannerText ? el("div", { class: `scorer-phase-banner${isGolden ? " golden" : ""}` }, bannerText) : null;
 
-      const header = el("div", { class: "detail-header" }, [
+      const header = el("div", { class: "detail-header scorer-header" }, [
         el("h2", {}, state.winner ? "Match complete" : `Set ${Math.min(setNumber, 3)}${state.tiebreak ? " - Tiebreak" : ""}`)
       ]);
 
       const winnerBanner = state.winner
-        ? el("div", { class: "card champion-card" }, [
+        ? el("div", { class: "card champion-card scorer-winner-banner" }, [
             el("div", {}, "🏆 MATCH WON"),
             el("h2", {}, state.winner === "A" ? match.teamAName : match.teamBName)
           ])
         : null;
 
-      const actions = el("div", { class: "row-actions" }, [
+      const actions = el("div", { class: "row-actions scorer-actions" }, [
         el("button", { class: "btn btn-ghost", type: "button", disabled: !match.events.length, onclick: undoLastPoint }, "Undo last point"),
         el("button", { class: "btn btn-danger", type: "button", onclick: confirmReset }, "Reset match")
       ]);
 
-      return el("div", { class: "stack" }, [header, winnerBanner, phaseBanner, court, actions, matchOverview(state, match), testingPanel(state, match)]);
+      return el("div", { class: "stack scorer-live-root" }, [
+        header,
+        winnerBanner,
+        phaseBanner,
+        court,
+        actions,
+        el("div", { class: "scorer-overview-card" }, matchOverview(state, match)),
+        el("div", { class: "scorer-testing-card" }, testingPanel(state, match))
+      ]);
     }
 
     function scorerSide(team, name, pointLabel, games, isServing, matchOver) {
