@@ -15,7 +15,13 @@
 // on a plain static host: pull the code out of the path and hand off to the
 // real team.html?code=... page, which team-view.js then rewrites the address
 // bar back to the clean form via history.replaceState (see team-view.js).
-// Anything else unmatched just goes to the site root.
+// Anything else unmatched goes to the site root - which always resolves
+// (see index.html) rather than to path's own parent directory, which could
+// just as easily not exist either and 404 straight back into this same
+// script, looping forever (this is exactly what happened with a bare "/"
+// before index.html existed, and would happen again for any other
+// nonexistent directory-shaped path otherwise - e.g. a stray link to a
+// folder that isn't published, like this repo's apple-watch-scorer/).
 (function () {
   var path = window.location.pathname;
   var idx = path.search(/\/(?:team|t)\/[^\/]+\/?$/);
@@ -24,7 +30,7 @@
     var code = decodeURIComponent(path.slice(idx).match(/\/(?:team|t)\/([^\/]+)\/?$/)[1]);
     window.location.replace(base + "team.html?code=" + encodeURIComponent(code));
   } else {
-    window.location.replace(path.slice(0, path.lastIndexOf("/") + 1));
+    window.location.replace(window.location.origin + "/");
   }
 })();
 </script>
