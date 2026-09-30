@@ -23,8 +23,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/configure-pages@v5
+      # apple-watch-scorer/ is a separate Swift/Xcode source tree (no web
+      # content) that lives in this repo for convenience but was never meant
+      # to be published as part of the site - exclude it (and .git) here
+      # rather than changing what "." meant for the actual web app.
+      - name: Stage site (exclude non-web source folders)
+        run: |
+          mkdir -p _site
+          rsync -a --exclude='_site' --exclude='.git' --exclude='apple-watch-scorer' ./ _site/
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: "."
+          path: _site
       - id: deployment
         uses: actions/deploy-pages@v4

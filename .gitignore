@@ -1,3 +1,15 @@
 .claude/
 .DS_Store
 Thumbs.db
+
+# apple-watch-scorer/ (Swift Package + future Xcode app targets) - build
+# artifacts and per-user Xcode state, once this is actually opened/built
+# on a Mac. Source files (.swift, Package.swift) are never matched by these.
+.build/
+.swiftpm/
+DerivedData/
+*.xcuserstate
+xcuserdata/
+*.xcodeproj/project.xcworkspace/
+*.xcodeproj/xcuserdata/
+*.xcworkspace/xcuserdata/
