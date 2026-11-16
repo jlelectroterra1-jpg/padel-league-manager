@@ -3,6 +3,8 @@
 (function () {
   const { el, formatDate, badge, genAccessCode, scoreGrid, scoreInput, wireAutoAdvance } = window.Render;
   const { dbList, dbGet, dbInsert, dbUpdate, dbDelete } = window.DB;
+  const { rulesList } = window.Render;
+  const LeagueRules = window.LeagueRules;
 
   const app = document.getElementById("app");
   const expandedTeams = new Set();
@@ -115,6 +117,10 @@
       el("option", { value: "2" }, "Top 2 (final only)")
     ]);
     const error = el("p", { class: "form-error", hidden: true });
+    // Every new league gets rules (the locked ones can't be removed), which
+    // teams must accept before using their link - see league-rules.js.
+    const rules = rulesEditor(null, false);
+    const createBtn = el("button", { class: "btn btn-primary", type: "submit" }, "Create league");
 
     const form = el("form", { class: "card" }, [
       el("h2", {}, "Create a new league"),
@@ -123,8 +129,11 @@
       el("div", { class: "field-row" }, [field("Start date", startDate), field("Number of teams", numTeams)]),
       el("div", { class: "field-row" }, [field("Number of courts", numCourts), field("Playoff format", playoffSize)]),
       el("p", { class: "muted small" }, "Every match is 3 sets - each set won is worth 1 league point."),
+      el("h3", { class: "rules-heading" }, "League rules"),
+      rulesIntro(),
+      rules.node,
       error,
-      el("button", { class: "btn btn-primary", type: "submit" }, "Create league")
+      createBtn
     ]);
 
     form.addEventListener("submit", async (e) => {
@@ -134,19 +143,189 @@
         error.textContent = "League name is required.";
         return;
       }
-      const league = await dbInsert("leagues", {
-        name: name.value.trim(),
-        description: description.value.trim() || null,
-        start_date: startDate.value || null,
-        num_teams: Number(numTeams.value) || null,
-        num_courts: Number(numCourts.value) || 1,
-        playoff_size: Number(playoffSize.value),
-        status: "draft"
-      });
-      navigate(`#/league/${league.id}/teams`);
+      createBtn.disabled = true;
+      createBtn.textContent = "Creating...";
+      error.hidden = true;
+      try {
+        const league = await dbInsert("leagues", {
+          name: name.value.trim(),
+          description: description.value.trim() || null,
+          start_date: startDate.value || null,
+          num_teams: Number(numTeams.value) || null,
+          num_courts: Number(numCourts.value) || 1,
+          playoff_size: Number(playoffSize.value),
+          status: "draft",
+          rules: LeagueRules.build(rules.getConfig())
+        });
+        navigate(`#/league/${league.id}/teams`);
+      } catch (err) {
+        console.error(err);
+        createBtn.disabled = false;
+        createBtn.textContent = "Create league";
+        error.hidden = false;
+        error.textContent = "Couldn't create the league - check your connection and try again.";
+      }
     });
 
     return form;
+  }
+
+  // ---------- League rules (editor + Settings card) ----------
+
+  function rulesIntro() {
+    return el(
+      "p",
+      { class: "muted small" },
+      "Every team has to read and accept these rules (by typing their name) before they can use their team link. Rules marked 🔒 describe how the app works and can't be removed. Tick the optional ones you want, fill in the blanks, and add your own below. Rules lock as soon as the first team accepts."
+    );
+  }
+
+  // Editor for a league's rules (see league-rules.js). Locked rules are
+  // always shown, read-only; optional rules are ticks with their {blanks}
+  // as inline inputs; the organiser's own rules go in a textarea, one per
+  // line. Returns the DOM plus getConfig() for whoever saves it.
+  function rulesEditor(config, readOnly) {
+    config = config || LeagueRules.defaultConfig();
+    const checks = {};
+    const blanks = {};
+    const children = [];
+    let lastGroup = null;
+
+    LeagueRules.BASE_RULES.forEach((rule) => {
+      if (rule.onlyWhen) return;
+      if (rule.group !== lastGroup) {
+        children.push(el("div", { class: "rules-group-title" }, rule.group));
+        lastGroup = rule.group;
+      }
+
+      if (rule.locked) {
+        children.push(
+          el("div", { class: "rules-row locked" }, [
+            el("span", { class: "rules-lock", title: "Always part of the rules" }, "🔒"),
+            el("span", { class: "rules-text" }, rule.text)
+          ])
+        );
+        return;
+      }
+
+      const entry = (config.items && config.items[rule.key]) || {};
+      const check = el("input", { type: "checkbox", "aria-label": "Include this rule" });
+      check.checked = LeagueRules.isOn(rule, config);
+      check.disabled = readOnly;
+      checks[rule.key] = check;
+
+      const textParts = LeagueRules.parts(rule).map((part) => {
+        if (!part.param) return part.text;
+        const isNumber = typeof part.value === "number";
+        const input = el("input", { class: "input rules-blank", type: isNumber ? "number" : "text" });
+        if (isNumber) input.min = "0";
+        const saved = entry.values && entry.values[part.param];
+        input.value = saved !== undefined && saved !== null && String(saved).trim() !== "" ? saved : part.value;
+        input.disabled = readOnly;
+        (blanks[rule.key] = blanks[rule.key] || {})[part.param] = input;
+        return input;
+      });
+      children.push(el("div", { class: "rules-row" }, [check, el("span", { class: "rules-text" }, textParts)]));
+    });
+
+    const custom = el("textarea", { class: "input rules-custom", rows: "3", placeholder: "One rule per line" });
+    custom.value = (config.custom || []).join("\n");
+    custom.disabled = readOnly;
+    children.push(el("div", { class: "rules-group-title" }, "Your own rules"), custom);
+
+    function getConfig() {
+      const items = {};
+      LeagueRules.BASE_RULES.forEach((rule) => {
+        if (rule.locked || rule.onlyWhen) return;
+        const values = {};
+        Object.entries(blanks[rule.key] || {}).forEach(([name, input]) => (values[name] = input.value));
+        items[rule.key] = { on: checks[rule.key].checked, values };
+      });
+      return { items, custom: custom.value.split("\n") };
+    }
+
+    return { node: el("div", { class: "rules-editor" }, children), getConfig };
+  }
+
+  // League ids currently showing the "add rules" editor on a league that has
+  // no rules yet (an existing league from before rules existed).
+  const addingRules = new Set();
+
+  function rulesCard(league, acceptances) {
+    if (!league.rules && !addingRules.has(league.id)) {
+      return el("div", { class: "card" }, [
+        el("h3", {}, "League rules"),
+        el(
+          "p",
+          { class: "muted" },
+          "This league has no rules set, so teams use their links as normal. If you add rules, every team will be asked to read and accept them (by typing their name) the next time they open their team link."
+        ),
+        el(
+          "button",
+          { class: "btn btn-primary", type: "button", onclick: () => { addingRules.add(league.id); render(); } },
+          "Add rules"
+        )
+      ]);
+    }
+
+    if (league.rules && acceptances.length) {
+      return el("div", { class: "card" }, [
+        el("h3", {}, "League rules"),
+        el(
+          "p",
+          { class: "muted small" },
+          `Locked - ${acceptances.length} team${acceptances.length === 1 ? " has" : "s have"} accepted these rules, so they can't be changed now.`
+        ),
+        rulesList(league.rules.items)
+      ]);
+    }
+
+    const editor = rulesEditor(league.rules ? league.rules.config : null, false);
+    const error = el("p", { class: "form-error", hidden: true });
+    const saved = el("span", { class: "save-confirm", hidden: true }, "Saved");
+    const saveBtn = el("button", { class: "btn btn-primary", type: "button" }, league.rules ? "Save rules" : "Save rules and turn on");
+    const actions = [saveBtn, saved];
+    if (!league.rules) {
+      actions.push(
+        el("button", { class: "btn btn-ghost", type: "button", onclick: () => { addingRules.delete(league.id); render(); } }, "Cancel")
+      );
+    }
+
+    saveBtn.addEventListener("click", async () => {
+      saveBtn.disabled = true;
+      error.hidden = true;
+      try {
+        // A team may have accepted since this page loaded - rules lock the
+        // moment that happens, so never overwrite what they agreed to.
+        const current = await dbList("rules_acceptances", { league_id: `eq.${league.id}` });
+        if (current.length) {
+          render();
+          return;
+        }
+        await dbUpdate("leagues", league.id, { rules: LeagueRules.build(editor.getConfig()) });
+        if (league.rules) {
+          saveBtn.disabled = false;
+          saved.hidden = false;
+          setTimeout(() => (saved.hidden = true), 1500);
+        } else {
+          addingRules.delete(league.id);
+          render();
+        }
+      } catch (err) {
+        console.error(err);
+        saveBtn.disabled = false;
+        error.hidden = false;
+        error.textContent = "Couldn't save the rules - check your connection and try again.";
+      }
+    });
+
+    return el("div", { class: "card" }, [
+      el("h3", {}, "League rules"),
+      rulesIntro(),
+      editor.node,
+      error,
+      el("div", { class: "field-row", style: "align-items:center;" }, actions)
+    ]);
   }
 
   function field(label, input) {
@@ -167,6 +346,10 @@
       // fetch here was wasted on nearly every click.
       dbList("results", { select: "*,fixtures!inner(id)", "fixtures.league_id": `eq.${leagueId}` })
     ]);
+    // Only leagues that actually have rules have acceptances to look up - a
+    // league without rules (every league created before rules existed) costs
+    // no extra request here and never touches the rules_acceptances table.
+    const acceptances = league && league.rules ? await dbList("rules_acceptances", { league_id: `eq.${leagueId}` }) : [];
 
     app.innerHTML = "";
     if (!league) {
@@ -207,13 +390,13 @@
       )
     );
 
-    if (tab === "teams") app.appendChild(renderTeamsTab(league, teams, fixtures, results));
+    if (tab === "teams") app.appendChild(renderTeamsTab(league, teams, fixtures, results, acceptances));
     else if (tab === "fixtures") app.appendChild(renderFixturesTab(league, teams, fixtures, results));
     else if (tab === "standings") app.appendChild(renderStandingsTab(league, teams, fixtures, results));
     else if (tab === "playoffs") app.appendChild(renderPlayoffsTab(league, teams, fixtures, results));
     else if (tab === "confirmations") app.appendChild(renderConfirmationsTab(teams, fixtures, results));
     else if (tab === "disputes") app.appendChild(renderDisputesTab(teams, fixtures, results));
-    else app.appendChild(renderSettingsTab(league));
+    else app.appendChild(renderSettingsTab(league, acceptances));
   }
 
   // ---------- League-wide stats strip (shown above the tabs on every view) ----------
@@ -426,10 +609,11 @@
 
   // ---------- Teams tab ----------
 
-  function renderTeamsTab(league, teams, fixtures, results) {
+  function renderTeamsTab(league, teams, fixtures, results, acceptances) {
     const teamsById = Object.fromEntries(teams.map((t) => [t.id, t]));
+    const acceptedByTeam = Object.fromEntries(acceptances.map((a) => [a.team_id, a]));
     const rows = teams.length
-      ? teams.map((team) => teamRow(league, team, teams, fixtures, teamsById, results))
+      ? teams.map((team) => teamRow(league, team, teams, fixtures, teamsById, results, acceptedByTeam))
       : [el("p", { class: "empty-state" }, "No teams yet - add your fixed pairs above.")];
 
     return el("div", { class: "stack" }, [
@@ -438,9 +622,11 @@
     ]);
   }
 
-  function teamRow(league, team, allTeams, fixtures, teamsById, results) {
+  function teamRow(league, team, allTeams, fixtures, teamsById, results, acceptedByTeam) {
     const expanded = expandedTeams.has(team.id);
     const editing = editingTeams.has(team.id);
+    // Only meaningful for a league that has rules - otherwise no badge/line at all.
+    const accepted = league.rules ? acceptedByTeam[team.id] : null;
     const link = `${location.origin}${location.pathname.replace(/admin\.html$/, "")}team/${team.access_code}`;
 
     if (editing) {
@@ -449,8 +635,13 @@
 
     const header = el("div", { class: "team-row-header" }, [
       el("div", {}, [
-        el("div", { class: "team-row-name" }, [team.name, !team.active && badge("inactive", "neutral")]),
-        el("div", { class: "muted small" }, `${team.player1} + ${team.player2}`)
+        el("div", { class: "team-row-name" }, [
+          team.name,
+          !team.active && badge("inactive", "neutral"),
+          league.rules && (accepted ? badge("rules accepted", "green") : badge("rules not accepted", "amber"))
+        ]),
+        el("div", { class: "muted small" }, `${team.player1} + ${team.player2}`),
+        accepted ? el("div", { class: "muted small" }, `Rules accepted by ${accepted.accepted_name} · ${formatDate(accepted.accepted_at.slice(0, 10))}`) : null
       ]),
       el("div", { class: "row-actions" }, [
         el("button", { class: "btn btn-ghost small", type: "button", onclick: () => toggleEdit(team.id) }, "Edit"),
@@ -1013,7 +1204,7 @@
 
   // ---------- Settings tab ----------
 
-  function renderSettingsTab(league) {
+  function renderSettingsTab(league, acceptances) {
     const name = el("input", { class: "input", value: league.name });
     const description = el("input", { class: "input", value: league.description || "" });
     const startDate = el("input", { class: "input", type: "date", value: league.start_date || "" });
@@ -1053,7 +1244,7 @@
       setTimeout(() => (saved.hidden = true), 1500);
     });
 
-    return el("div", { class: "stack" }, [form, endLeagueCard(league), deleteLeagueCard(league)]);
+    return el("div", { class: "stack" }, [form, rulesCard(league, acceptances), endLeagueCard(league), deleteLeagueCard(league)]);
   }
 
   // A checkbox styled as a pill switch (see .switch in style.css). Returns

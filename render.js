@@ -115,5 +115,17 @@
     });
   }
 
-  window.Render = { el, formatDate, badge, qs, genAccessCode, formatSets, scoreGrid, scoreInput, wireAutoAdvance };
+  // A league's final rules as a numbered list - shared by admin.js (locked
+  // view in Settings) and team-view.js (the accept screen and the "League
+  // rules" card), so both always show rules the same way. `items` is the
+  // [{ key, locked, text }] list stored on leagues.rules / an acceptance.
+  function rulesList(items) {
+    return el(
+      "ol",
+      { class: "rules-list" },
+      items.map((item) => el("li", {}, item.text))
+    );
+  }
+
+  window.Render = { el, formatDate, badge, qs, genAccessCode, formatSets, scoreGrid, scoreInput, wireAutoAdvance, rulesList };
 })();

@@ -2,8 +2,8 @@
 // shows that team's fixtures with score submission / confirmation / dispute.
 // Write-path logic lives in results.js - this file is DOM glue only.
 (function () {
-  const { el, qs, scoreGrid, scoreInput, wireAutoAdvance } = window.Render;
-  const { dbList } = window.DB;
+  const { el, qs, formatDate, scoreGrid, scoreInput, wireAutoAdvance, rulesList } = window.Render;
+  const { dbList, dbInsert } = window.DB;
 
   const app = document.getElementById("app");
   const openSubmitForms = new Set();
@@ -117,7 +117,21 @@
     // change made elsewhere in the league picked up on every refresh.
     const freshTeam = teamsById[team.id] || team;
 
-    ctx = { team: freshTeam, league, teamsById, fixtures, results, availability };
+    // Only a league that has rules asks its teams to accept them - a league
+    // without any (every league created before rules existed) skips this
+    // lookup entirely and behaves exactly as it always has. An acceptance
+    // can never be undone, so once we have this team's, every later refresh
+    // (after each score action) reuses it instead of re-fetching - refresh()
+    // was deliberately made fast, so this must not add a request back.
+    let accepted = null;
+    if (league && league.rules) {
+      accepted =
+        ctx && ctx.accepted && ctx.team && ctx.team.id === freshTeam.id
+          ? ctx.accepted
+          : (await dbList("rules_acceptances", { team_id: `eq.${freshTeam.id}` }))[0] || null;
+    }
+
+    ctx = { team: freshTeam, league, teamsById, fixtures, results, availability, accepted };
     render();
   }
 
@@ -130,6 +144,14 @@
     const { team, league, teamsById, fixtures, results } = ctx;
     const allTeams = Object.values(teamsById);
     app.innerHTML = "";
+
+    // First thing a team sees on a league that has rules: read and accept
+    // them. The dashboard below only renders once they have.
+    if (league && league.rules && !ctx.accepted) {
+      app.appendChild(rulesGate(league, team));
+      window.scrollTo(0, 0);
+      return;
+    }
 
     const standings = window.Standings.computeStandings(allTeams, fixtures, results);
     const myRow = standings.find((r) => r.team.id === team.id);
@@ -215,7 +237,90 @@
 
     app.appendChild(el("div", { class: "card" }, [el("h3", {}, "League table"), standingsTable(standings)]));
 
+    if (league && league.rules && ctx.accepted) app.appendChild(rulesCard(ctx.accepted));
+
     window.scrollTo(0, scrollY);
+  }
+
+  // The accept screen. A team link has no login, so "accepting" is typing a
+  // name; one teammate accepts for the pair. The exact text shown is saved
+  // alongside the name (not just a reference to the league's rules), so what
+  // a team agreed to stays provable even if the rules were ever changed.
+  function rulesGate(league, team) {
+    const name = el("input", { class: "input", placeholder: "Type your full name", autocomplete: "name" });
+    const error = el("p", { class: "form-error", hidden: true });
+    const acceptBtn = el("button", { class: "btn btn-primary", type: "submit", disabled: true }, "I accept these rules");
+
+    const form = el("form", { class: "card rules-gate" }, [
+      el("div", { class: "muted small" }, league.name),
+      el("h2", {}, "League rules"),
+      el("p", { class: "muted" }, `Welcome, ${team.name}. Please read the rules below - you need to accept them before you can use your team page.`),
+      rulesList(league.rules.items),
+      el("label", { class: "field" }, [el("span", {}, "Type your full name to accept"), name]),
+      el(
+        "p",
+        { class: "muted small" },
+        "One of you can accept for both partners. By typing your name you confirm you've read these rules and agree to them on behalf of your team."
+      ),
+      error,
+      acceptBtn
+    ]);
+
+    name.addEventListener("input", () => {
+      acceptBtn.disabled = name.value.trim().length < 2;
+    });
+
+    let saving = false;
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const typed = name.value.trim();
+      if (saving || typed.length < 2) return;
+      saving = true;
+      acceptBtn.disabled = true;
+      acceptBtn.textContent = "Saving...";
+      error.hidden = true;
+      try {
+        ctx.accepted = await dbInsert("rules_acceptances", {
+          league_id: league.id,
+          team_id: team.id,
+          accepted_name: typed,
+          rules_snapshot: league.rules.items,
+          accepted_at: new Date().toISOString()
+        });
+        render();
+      } catch (err) {
+        console.error(err);
+        // The other teammate may have accepted from their own phone a
+        // moment ago (one acceptance per team) - if so just carry on.
+        try {
+          const existing = (await dbList("rules_acceptances", { team_id: `eq.${team.id}` }))[0];
+          if (existing) {
+            ctx.accepted = existing;
+            render();
+            return;
+          }
+        } catch (err2) {
+          console.error(err2);
+        }
+        saving = false;
+        acceptBtn.disabled = false;
+        acceptBtn.textContent = "I accept these rules";
+        error.hidden = false;
+        error.textContent = "Couldn't save - check your connection and try again.";
+      }
+    });
+
+    return form;
+  }
+
+  // The rules the team accepted, for re-reading any time - collapsed by
+  // default at the bottom of the dashboard so it doesn't get in the way.
+  function rulesCard(accepted) {
+    return el("details", { class: "card rules-card" }, [
+      el("summary", {}, "League rules"),
+      el("p", { class: "muted small" }, `Accepted by ${accepted.accepted_name} on ${formatDate(accepted.accepted_at.slice(0, 10))}`),
+      rulesList(accepted.rules_snapshot)
+    ]);
   }
 
   function championCard(fixtures, results, teamsById) {

@@ -479,6 +479,38 @@ body{
   }
 }
 
+/* League rules (create-league form, Settings tab, and the team link's
+   accept screen / rules card) */
+.rules-heading{ margin:18px 0 6px; }
+.rules-editor{ display:flex; flex-direction:column; gap:6px; margin-bottom:14px; }
+.rules-group-title{
+    margin-top:10px; font-size:11px; font-weight:800; text-transform:uppercase;
+    letter-spacing:0.04em; color:var(--muted);
+}
+.rules-row{
+    display:flex; align-items:flex-start; gap:10px; padding:9px 10px;
+    border:1px solid var(--line-soft); border-radius:var(--radius-sm);
+    font-size:13.5px; line-height:1.5;
+}
+.rules-row.locked{ background:rgba(255,255,255,0.03); color:var(--muted); }
+.rules-row input[type="checkbox"]{ flex:none; width:18px; height:18px; margin-top:3px; accent-color:var(--brand); }
+.rules-lock{ flex:none; font-size:13px; line-height:1.6; }
+.rules-text{ min-width:0; overflow-wrap:break-word; }
+/* the {blanks} inside a rule - small inline inputs in the sentence, not the
+   full-width 44px form input */
+.rules-blank{
+    display:inline-block; width:64px; height:30px; padding:2px 6px; margin:0 3px;
+    font-size:14px; text-align:center; vertical-align:middle;
+}
+.rules-blank[type="text"]{ width:130px; }
+.rules-custom{ height:auto; min-height:84px; padding:10px 12px; resize:vertical; }
+.rules-list{ margin:12px 0; padding-left:22px; font-size:14px; line-height:1.55; }
+.rules-list li{ margin-bottom:8px; overflow-wrap:break-word; }
+.rules-card summary{ cursor:pointer; font-family:var(--font-display); font-weight:700; font-size:16px; }
+.rules-card p{ margin:10px 0 0; }
+.rules-gate h2{ margin-bottom:8px; }
+.rules-gate .field{ margin:14px 0 10px; }
+
 /* danger zone */
 .danger-card{ border-color:rgba(239,68,68,0.35); }
 .danger-card .input{ margin:10px 0; }
