@@ -389,22 +389,22 @@ details.form-section[open] > summary{ margin-bottom:14px; }
 .back-link{ color:var(--muted); text-decoration:none; font-size:13px; width:100%; }
 .back-link:hover{ color:var(--text); }
 
-.tabs-inline{
-    display:flex; flex-wrap:nowrap; gap:6px; margin:0 -18px 16px; padding:2px 18px 6px;
-    overflow-x:auto; -webkit-overflow-scrolling:touch; scrollbar-width:none;
-}
-.tabs-inline::-webkit-scrollbar{ display:none; }
-@media (max-width: 640px){
-    /* a soft fade at the edges shows there's more to scroll to */
-    .tabs-inline{ -webkit-mask-image:linear-gradient(90deg,transparent 0,#000 18px,#000 calc(100% - 28px),transparent 100%); mask-image:linear-gradient(90deg,transparent 0,#000 18px,#000 calc(100% - 28px),transparent 100%); }
-}
+/* Section tabs. Every tab is always visible: on a phone they wrap onto a
+   second line instead of scrolling sideways (a hidden, scrolling row made
+   people think the extra tabs didn't exist). Each tab is a visible button. */
+.tabs-inline{ display:flex; flex-wrap:wrap; gap:8px; margin:0 0 18px; padding:0; }
 .tab-inline{
-    padding:9px 16px; border-radius:999px; text-decoration:none; color:var(--muted); flex:none;
-    font-weight:700; font-size:13.5px; border:1px solid transparent; white-space:nowrap;
-    transition:background .12s var(--ease), color .12s var(--ease);
+    padding:9px 16px; border-radius:999px; text-decoration:none; color:var(--text); flex:none;
+    font-weight:700; font-size:13.5px; white-space:nowrap;
+    background:var(--panel); border:1px solid var(--line); box-shadow:var(--shadow-sm);
+    transition:background .12s var(--ease), color .12s var(--ease), border-color .12s var(--ease);
 }
-.tab-inline:hover{ background:var(--tint-2); color:var(--text); }
-.tab-inline.active{ background:var(--blue-600); border-color:transparent; color:#fff; box-shadow:0 1px 2px rgba(37,99,235,0.35); }
+@media (hover:hover){ .tab-inline:hover{ border-color:var(--blue); background:var(--accent-soft); } }
+.tab-inline.active{ background:var(--blue-600); border-color:transparent; color:#fff; box-shadow:0 1px 2px rgba(37,99,235,0.35), 0 4px 12px rgba(37,99,235,0.22); }
+@media (max-width: 480px){
+    .tabs-inline{ gap:6px; }
+    .tab-inline{ padding:8px 13px; font-size:13px; }
+}
 
 /* teams */
 .team-row{ border:1px solid var(--line-soft); border-radius:var(--radius-sm); padding:14px; }
