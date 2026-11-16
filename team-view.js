@@ -284,8 +284,9 @@
           league_id: league.id,
           team_id: team.id,
           accepted_name: typed,
-          rules_snapshot: league.rules.items,
-          accepted_at: new Date().toISOString()
+          rules_snapshot: league.rules.items
+          // created_at (stamped by dbInsert, like every table here) is the
+          // time of acceptance.
         });
         render();
       } catch (err) {
@@ -318,7 +319,7 @@
   function rulesCard(accepted) {
     return el("details", { class: "card rules-card" }, [
       el("summary", {}, "League rules"),
-      el("p", { class: "muted small" }, `Accepted by ${accepted.accepted_name} on ${formatDate(accepted.accepted_at.slice(0, 10))}`),
+      el("p", { class: "muted small" }, `Accepted by ${accepted.accepted_name} on ${formatDate(accepted.created_at.slice(0, 10))}`),
       rulesList(accepted.rules_snapshot)
     ]);
   }

@@ -13,14 +13,16 @@ alter table leagues add column if not exists rules jsonb;
 -- exact copy of the text the team accepted, so it stays provable even if the
 -- league's rules are ever changed afterward. accepted_name is whoever typed
 -- their name on the team link (one teammate accepts for the pair). One
--- acceptance per team.
+-- acceptance per team. created_at is the time of acceptance - it has to be
+-- called created_at (not accepted_at): db.js orders every list by
+-- created_at and stamps it on every insert, so every table needs one.
 create table if not exists rules_acceptances (
   id uuid primary key default gen_random_uuid(),
   league_id uuid not null references leagues(id) on delete cascade,
   team_id uuid not null references teams(id) on delete cascade unique,
   accepted_name text not null,
   rules_snapshot jsonb not null,
-  accepted_at timestamptz not null default now()
+  created_at timestamptz not null default now()
 );
 
 create index if not exists rules_acceptances_league_id_idx on rules_acceptances(league_id);

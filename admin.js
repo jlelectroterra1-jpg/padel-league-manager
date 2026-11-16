@@ -641,7 +641,7 @@
           league.rules && (accepted ? badge("rules accepted", "green") : badge("rules not accepted", "amber"))
         ]),
         el("div", { class: "muted small" }, `${team.player1} + ${team.player2}`),
-        accepted ? el("div", { class: "muted small" }, `Rules accepted by ${accepted.accepted_name} · ${formatDate(accepted.accepted_at.slice(0, 10))}`) : null
+        accepted ? el("div", { class: "muted small" }, `Rules accepted by ${accepted.accepted_name} · ${formatDate(accepted.created_at.slice(0, 10))}`) : null
       ]),
       el("div", { class: "row-actions" }, [
         el("button", { class: "btn btn-ghost small", type: "button", onclick: () => toggleEdit(team.id) }, "Edit"),
