@@ -228,29 +228,33 @@
     const rules = rulesEditor(null, false);
     const createBtn = el("button", { class: "btn btn-primary", type: "submit" }, "Create league");
 
-    const form = el("form", { class: "card" }, [
-      el("h2", {}, "Create a new league"),
-      me && me.role === "organiser"
-        ? el("p", { class: "muted small" }, "After you create the league you'll be asked to pay R50 to activate it. Your teams' links start working once it's paid.")
-        : null,
-      field("League name", name),
-      field("Description", description),
-      el("div", { class: "field-row" }, [field("Start date", startDate), field("Number of teams", numTeams)]),
-      el("div", { class: "field-row" }, [field("Number of courts", numCourts), field("Playoff format", playoffSize)]),
-      el("p", { class: "muted small" }, "Every match is 3 sets - each set won is worth 1 league point."),
-      el("h3", { class: "rules-heading" }, "Entry fee"),
-      el(
-        "p",
-        { class: "muted small" },
-        "Optional. Teams pay once per team (covering both partners) on their team link, after accepting the rules. They see one price: your fee plus a 20% platform fee. Two rules about the fee and refunds are added to your league rules automatically. Leave the fee empty for a free league. The fee can't be changed once the first team accepts the rules."
+    // Three clear steps instead of one long card. The rules are folded away
+    // (sensible defaults are already ticked), so the form is short to scan.
+    const { pageHead, formSection } = window.Render;
+    const form = el("form", { class: "form-sections" }, [
+      pageHead(
+        "Create a new league",
+        me && me.role === "organiser" ? "After you create the league you'll be asked to pay R50 to activate it. Your teams' links start working once it's paid." : null
       ),
-      el("div", { class: "field-row" }, [field("Your fee per team (R) - what you receive", entryFee), field("Payment cut-off date", deadline)]),
-      feePreview.node,
-      el("h3", { class: "rules-heading" }, "League rules"),
-      rulesIntro(),
-      rules.node,
+      formSection(1, "League details", "Every match is 3 sets - each set won is worth 1 league point.", [
+        field("League name", name),
+        field("Description", description),
+        el("div", { class: "field-row" }, [field("Start date", startDate), field("Number of teams", numTeams)]),
+        el("div", { class: "field-row" }, [field("Number of courts", numCourts), field("Playoff format", playoffSize)])
+      ]),
+      formSection(
+        2,
+        "Entry fee",
+        "Optional. Teams pay once per team (covering both partners) on their team link, after accepting the rules. They see one price: your fee plus a 20% platform fee. Two rules about the fee and refunds are added to your league rules automatically. Leave the fee empty for a free league. The fee can't be changed once the first team accepts the rules.",
+        [el("div", { class: "field-row" }, [field("Your fee per team (R) - what you receive", entryFee), field("Payment cut-off date", deadline)]), feePreview.node]
+      ),
+      el("details", { class: "card form-section" }, [
+        el("summary", {}, [el("span", { class: "section-num" }, "3"), el("span", { class: "summary-title" }, "League rules"), el("span", { class: "summary-hint" }, "Defaults included - review or change")]),
+        rulesIntro(),
+        rules.node
+      ]),
       error,
-      createBtn
+      el("div", { class: "form-actions" }, [createBtn])
     ]);
 
     form.addEventListener("submit", async (e) => {

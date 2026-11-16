@@ -162,6 +162,26 @@
     ]);
   }
 
+  // The title row at the top of a page: the heading (and a line under it) on
+  // the left, the main action on the right; wraps neatly on a phone.
+  function pageHead(title, subtitle, actions) {
+    return el("div", { class: "page-head" }, [
+      el("div", { class: "page-head-text" }, [el("h2", {}, title), subtitle ? el("p", { class: "muted" }, subtitle) : null]),
+      actions ? el("div", { class: "page-head-actions" }, actions) : null
+    ]);
+  }
+
+  // One numbered block of a long form.
+  function formSection(n, title, subtitle, children) {
+    return el("section", { class: "card form-section" }, [
+      el("div", { class: "section-head" }, [
+        el("span", { class: "section-num" }, String(n)),
+        el("div", {}, [el("h3", {}, title), subtitle ? el("p", { class: "muted small" }, subtitle) : null])
+      ]),
+      ...children
+    ]);
+  }
+
   // Small line icons (24x24 grid, drawn with the current text colour), so the
   // interface can use pictures without any image files or libraries.
   const ICONS = {
@@ -174,7 +194,11 @@
     check: '<path d="m5 12.5 4.5 4.5L19 7.5"/>',
     info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 7.6v.1"/>',
     lock: '<rect x="5" y="10.5" width="14" height="10" rx="2.5"/><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5"/>',
-    arrow: '<path d="M5 12h14M13 6l6 6-6 6"/>'
+    arrow: '<path d="M5 12h14M13 6l6 6-6 6"/>',
+    grid: '<rect x="3.5" y="3.5" width="7" height="7" rx="1.8"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.8"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.8"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.8"/>',
+    card: '<rect x="3" y="5.5" width="18" height="13" rx="2.5"/><path d="M3 10h18M7 15h4"/>',
+    list: '<path d="M8.5 6.5H20M8.5 12H20M8.5 17.5H20"/><path d="M4 6.5h.1M4 12h.1M4 17.5h.1"/>',
+    plus: '<circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/>'
   };
 
   function icon(name, size) {
@@ -214,5 +238,5 @@
     form.submit();
   }
 
-  window.Render = { el, formatDate, badge, qs, genAccessCode, formatSets, scoreGrid, scoreInput, wireAutoAdvance, rulesList, postForm, icon, skeleton, emptyState, revealActiveTab, passwordField, authLayout };
+  window.Render = { el, formatDate, badge, qs, genAccessCode, formatSets, scoreGrid, scoreInput, wireAutoAdvance, rulesList, postForm, icon, skeleton, emptyState, revealActiveTab, passwordField, authLayout, pageHead, formSection };
 })();

@@ -45,14 +45,14 @@
     app.innerHTML = "";
 
     // (Log out lives in the account menu in the top bar.)
-    app.appendChild(el("div", { class: "detail-header" }, [el("h2", {}, `Welcome, ${organiser.name}`)]));
+    app.appendChild(
+      window.Render.pageHead("My leagues", `Welcome back, ${organiser.name}.`, [
+        el("a", { class: "btn btn-primary", href: "admin.html#/new" }, "+ Create a league")
+      ])
+    );
 
     app.appendChild(
       el("div", { class: "card" }, [
-        el("div", { class: "detail-header" }, [
-          el("h3", {}, "My leagues"),
-          el("a", { class: "btn btn-primary small", href: "admin.html#/new" }, "+ Create a league")
-        ]),
         leagues.length
           ? el("div", { class: "stack" }, leagues.map((l) => leagueCard(l, unpaid.has(l.id))))
           : window.Render.emptyState(

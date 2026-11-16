@@ -12,13 +12,13 @@
   // Links for each kind of person. `match` decides which one is highlighted
   // for the page (and #hash) currently open.
   const OWNER_LINKS = [
-    { label: "Dashboard", href: "owner.html#/dashboard", match: (p, h) => p === "owner.html" && h !== "#/payments-lab" && h !== "#/scorer-lab" },
-    { label: "Payments", href: "owner.html#/payments-lab", match: (p, h) => p === "owner.html" && h === "#/payments-lab" },
-    { label: "All leagues", href: "admin.html#/leagues", match: (p, h) => p === "admin.html" && !h.startsWith("#/new") }
+    { label: "Dashboard", icon: "grid", href: "owner.html#/dashboard", match: (p, h) => p === "owner.html" && h !== "#/payments-lab" && h !== "#/scorer-lab" },
+    { label: "Payments", icon: "card", href: "owner.html#/payments-lab", match: (p, h) => p === "owner.html" && h === "#/payments-lab" },
+    { label: "All leagues", icon: "trophy", href: "admin.html#/leagues", match: (p, h) => p === "admin.html" && !h.startsWith("#/new") }
   ];
   const ORGANISER_LINKS = [
-    { label: "My leagues", href: "my-leagues.html", match: (p, h) => p === "my-leagues.html" || (p === "admin.html" && !h.startsWith("#/new")) },
-    { label: "Create a league", href: "admin.html#/new", match: (p, h) => p === "admin.html" && h.startsWith("#/new") }
+    { label: "My leagues", icon: "trophy", href: "my-leagues.html", match: (p, h) => p === "my-leagues.html" || (p === "admin.html" && !h.startsWith("#/new")) },
+    { label: "Create a league", icon: "plus", href: "admin.html#/new", match: (p, h) => p === "admin.html" && h.startsWith("#/new") }
   ];
 
   const pageName = () => location.pathname.split("/").pop() || "index.html";
@@ -68,6 +68,17 @@
     return profile;
   }
 
+  function cachedProfile() {
+    try {
+      const session = window.Auth && window.Auth.getSession && window.Auth.getSession();
+      const cached = JSON.parse(sessionStorage.getItem(PROFILE_KEY) || "null");
+      if (session && session.user && cached && cached.id === session.user.id) return cached;
+    } catch (e) {
+      /* no cache */
+    }
+    return null;
+  }
+
   async function logout() {
     try {
       sessionStorage.removeItem(PROFILE_KEY);
@@ -85,14 +96,14 @@
     const home = profile ? (profile.role === "owner" ? "owner.html" : "my-leagues.html") : "login.html";
 
     const brand = el("a", { class: "brand-link", href: home }, [
-      el("img", { class: "brand-mark", src: "assets/logo-192.png?v=47", alt: "" }),
+      el("img", { class: "brand-mark", src: "assets/logo-192.png?v=48", alt: "" }),
       el("span", { class: "brand-name" }, "Padel League Manager")
     ]);
 
     const nav = el(
       "nav",
       { class: "nav-links", "aria-label": "Main" },
-      links.map((l) => el("a", { class: `nav-link${l.match(p, h) ? " active" : ""}`, href: l.href, "aria-current": l.match(p, h) ? "page" : undefined }, l.label))
+      links.map((l) => el("a", { class: `nav-link${l.match(p, h) ? " active" : ""}`, href: l.href, "aria-current": l.match(p, h) ? "page" : undefined }, [icon(l.icon, 18), el("span", {}, l.label)]))
     );
 
     let right;
@@ -130,7 +141,11 @@
     header.innerHTML = "";
     header.classList.add("shell");
     // The front page is laid out wider than the app pages; line the bar up with it.
-    header.classList.toggle("wide", !!document.querySelector(".landing"));
+    const landing = !!document.querySelector(".landing");
+    header.classList.toggle("wide", landing);
+    // Signed in on the organiser/owner pages: the bar becomes a navy sidebar on
+    // a wide screen (CSS decides; on a phone it stays a top bar).
+    document.body.classList.toggle("has-sidebar", !!profile && !landing);
     header.appendChild(inner);
   }
 
@@ -157,7 +172,10 @@
       if (e.key === "Escape") closeMenu();
     });
     const signedIn = !!(window.Auth && window.Auth.getSession && window.Auth.getSession());
-    buildHeader(header, null, signedIn);
+    // If this browser tab already knows who is signed in, draw the real layout
+    // straight away so the page doesn't jump from a top bar to a sidebar.
+    const known = cachedProfile();
+    buildHeader(header, known, signedIn);
     buildFooter();
     const profile = await loadProfile();
     if (profile) buildHeader(header, profile, true);
