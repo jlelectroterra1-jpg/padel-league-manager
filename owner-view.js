@@ -18,7 +18,8 @@
   // its own independent re-render loop once mounted - a point tap never
   // comes back through here, so it never re-fetches organisers/leagues.
   function parseTab() {
-    return location.hash.replace(/^#\/?/, "") === "scorer-lab" ? "scorer-lab" : "dashboard";
+    const hash = location.hash.replace(/^#\/?/, "");
+    return hash === "scorer-lab" || hash === "payments-lab" ? hash : "dashboard";
   }
 
   async function render() {
@@ -51,7 +52,8 @@
     app.appendChild(
       el("div", { class: "tabs-inline" }, [
         el("a", { class: `tab-inline ${tab === "dashboard" ? "active" : ""}`, href: "#/dashboard" }, "Dashboard"),
-        el("a", { class: `tab-inline ${tab === "scorer-lab" ? "active" : ""}`, href: "#/scorer-lab" }, "Scorer Lab")
+        el("a", { class: `tab-inline ${tab === "scorer-lab" ? "active" : ""}`, href: "#/scorer-lab" }, "Scorer Lab"),
+        el("a", { class: `tab-inline ${tab === "payments-lab" ? "active" : ""}`, href: "#/payments-lab" }, "Payments Lab")
       ])
     );
 
@@ -59,6 +61,13 @@
       const container = el("div", {});
       app.appendChild(container);
       window.ScorerLab.mount(container);
+      return;
+    }
+
+    if (tab === "payments-lab") {
+      const container = el("div", {});
+      app.appendChild(container);
+      window.PaymentsLab.mount(container);
       return;
     }
 

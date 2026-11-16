@@ -27,10 +27,12 @@ jobs:
       # content) that lives in this repo for convenience but was never meant
       # to be published as part of the site - exclude it (and .git) here
       # rather than changing what "." meant for the actual web app.
+      # supabase/ holds the PayFast Edge Function source (deployed to
+      # Supabase, not served from the site), so it is excluded too.
       - name: Stage site (exclude non-web source folders)
         run: |
           mkdir -p _site
-          rsync -a --exclude='_site' --exclude='.git' --exclude='apple-watch-scorer' ./ _site/
+          rsync -a --exclude='_site' --exclude='.git' --exclude='apple-watch-scorer' --exclude='supabase' ./ _site/
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site
