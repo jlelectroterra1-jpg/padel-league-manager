@@ -89,7 +89,57 @@
       );
       return;
     }
+    installTeamShortcut(team);
     await loadLeagueData(team);
+  }
+
+  // "Add to Home Screen" from a team link should open THAT team's page, not
+  // the front page - so the page builds its own small manifest whose start
+  // page is this team's link (the same link the player is on right now), and
+  // names the shortcut after the team. Purely cosmetic: if anything here
+  // isn't supported, the page just works as it always did.
+  function installTeamShortcut(team) {
+    try {
+      document.title = `${team.name} - Padel League Manager`;
+      const head = document.head;
+      const setMeta = (name, content) => {
+        let m = head.querySelector(`meta[name="${name}"]`);
+        if (!m) {
+          m = document.createElement("meta");
+          m.name = name;
+          head.appendChild(m);
+        }
+        m.content = content;
+      };
+      setMeta("apple-mobile-web-app-title", team.name.length > 14 ? team.name.slice(0, 13) + "…" : team.name);
+
+      const base = location.origin + location.pathname.replace(/(?:team|t)\/[^/]+\/?$/, "").replace(/team\.html$/, "");
+      const link = location.origin + location.pathname;
+      const manifest = {
+        id: link,
+        name: `${team.name} - Padel League`,
+        short_name: team.name.length > 12 ? team.name.slice(0, 11) + "…" : team.name,
+        start_url: link,
+        scope: base,
+        display: "standalone",
+        background_color: "#14213D",
+        theme_color: "#14213D",
+        icons: [
+          { src: base + "assets/logo-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
+          { src: base + "assets/logo-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
+          { src: base + "assets/icon-maskable-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" }
+        ]
+      };
+      let el2 = head.querySelector('link[rel="manifest"]');
+      if (!el2) {
+        el2 = document.createElement("link");
+        el2.rel = "manifest";
+        head.appendChild(el2);
+      }
+      el2.href = URL.createObjectURL(new Blob([JSON.stringify(manifest)], { type: "application/manifest+json" }));
+    } catch (e) {
+      /* not supported - nothing to do */
+    }
   }
 
   // Re-fetches everything about the current league/team without re-resolving
