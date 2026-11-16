@@ -2,7 +2,7 @@
 // shows that team's fixtures with score submission / confirmation / dispute.
 // Write-path logic lives in results.js - this file is DOM glue only.
 (function () {
-  const { el, qs, formatDate, scoreGrid, scoreInput, wireAutoAdvance, rulesList } = window.Render;
+  const { el, qs, formatDate, scoreGrid, scoreInput, wireAutoAdvance, rulesList, postForm } = window.Render;
   const { dbList, dbInsert } = window.DB;
 
   const app = document.getElementById("app");
@@ -131,8 +131,27 @@
           : (await dbList("rules_acceptances", { team_id: `eq.${freshTeam.id}` }))[0] || null;
     }
 
-    ctx = { team: freshTeam, league, teamsById, fixtures, results, availability, accepted };
+    // Only a league that charges an entry fee has payments to look up, and
+    // only once the rules (if any) are accepted - the payment screen comes
+    // after them. Free leagues (every league created before entry fees
+    // existed) skip this entirely. A completed payment never goes back, so
+    // once seen it is reused on later refreshes.
+    let payment = null;
+    if (window.EntryFee.leagueHasFee(league) && (!league.rules || accepted)) {
+      payment =
+        ctx && ctx.payment && ctx.payment.status === "complete" && ctx.team && ctx.team.id === freshTeam.id
+          ? ctx.payment
+          : latestPayment(await dbList("team_payment_status", { team_id: `eq.${freshTeam.id}` }));
+    }
+
+    ctx = { team: freshTeam, league, teamsById, fixtures, results, availability, accepted, payment };
     render();
+  }
+
+  // The payment that matters for this team: a completed one wins, then a
+  // pending one, then the most recent of whatever else (failed, refunded...).
+  function latestPayment(rows) {
+    return rows.find((p) => p.status === "complete") || rows.find((p) => p.status === "pending") || rows[rows.length - 1] || null;
   }
 
   // This is a single continuous page (no tabs/routing), so every render() is
@@ -148,10 +167,20 @@
     // First thing a team sees on a league that has rules: read and accept
     // them. The dashboard below only renders once they have.
     if (league && league.rules && !ctx.accepted) {
+      stopPaymentPolling();
       app.appendChild(rulesGate(league, team));
       window.scrollTo(0, 0);
       return;
     }
+
+    // Then, on a league with an entry fee, the fee. The dashboard only
+    // appears once the team's payment has been confirmed by PayFast.
+    if (window.EntryFee.leagueHasFee(league) && !(ctx.payment && ctx.payment.status === "complete")) {
+      app.appendChild(paymentGate(league, team));
+      window.scrollTo(0, 0);
+      return;
+    }
+    stopPaymentPolling();
 
     const standings = window.Standings.computeStandings(allTeams, fixtures, results);
     const myRow = standings.find((r) => r.team.id === team.id);
@@ -312,6 +341,124 @@
     });
 
     return form;
+  }
+
+  // ---------- Entry fee ----------
+
+  let paymentPollTimer = null;
+
+  function stopPaymentPolling() {
+    if (paymentPollTimer) clearInterval(paymentPollTimer);
+    paymentPollTimer = null;
+  }
+
+  // PayFast confirms a payment by messaging our server a few seconds after
+  // the team pays, so a team coming back from PayFast may briefly still show
+  // as pending - check every few seconds (for a couple of minutes) and move
+  // on to the dashboard the moment it's confirmed.
+  function ensurePaymentPolling() {
+    if (paymentPollTimer) return;
+    let checks = 0;
+    paymentPollTimer = setInterval(async () => {
+      checks += 1;
+      if (checks > 40) {
+        stopPaymentPolling();
+        return;
+      }
+      try {
+        await refresh();
+      } catch (err) {
+        console.error(err);
+      }
+    }, 3000);
+  }
+
+  // Today's date in South Africa, to show "payment closed" without a round
+  // trip. Display only - the payment function enforces the cut-off itself.
+  function todayInSouthAfrica() {
+    return new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  }
+
+  // The pay screen. The price shown is the organiser's fee plus the
+  // platform's 20% as one number per team; the server recomputes it from the
+  // league when the team actually pays, so this is only ever a display.
+  function paymentGate(league, team) {
+    const price = window.EntryFee.priceFor(league.entry_fee_cents).total;
+    const deadline = league.payment_deadline;
+    const closed = !!deadline && todayInSouthAfrica() > deadline;
+    const status = ctx.payment ? ctx.payment.status : null;
+    const error = el("p", { class: "form-error", hidden: true });
+    const payBtn = el("button", { class: "btn btn-primary", type: "button" }, `Pay ${window.EntryFee.formatRand(price)} with PayFast`);
+
+    const children = [
+      el("div", { class: "muted small" }, league.name),
+      el("h2", {}, "Entry fee"),
+      el("p", { class: "muted" }, `Welcome, ${team.name}. Your team is registered in this league once its entry fee is paid.`),
+      el("div", { class: "pay-price" }, [
+        el("div", { class: "pay-amount" }, window.EntryFee.formatRand(price)),
+        el("div", { class: "muted small" }, "per team - covers both partners")
+      ]),
+      deadline ? el("p", { class: "muted" }, `Pay by ${formatDate(deadline)}.`) : null
+    ];
+
+    if (status === "refunded") {
+      stopPaymentPolling();
+      children.push(el("p", {}, "Your entry fee was refunded. Please contact your league organiser if you have any questions."));
+      return el("div", { class: "card pay-gate" }, children);
+    }
+
+    if (closed) {
+      stopPaymentPolling();
+      children.push(el("p", {}, "Payment is closed - the cut-off date has passed. Please contact your league organiser."));
+      return el("div", { class: "card pay-gate" }, children);
+    }
+
+    if (status === "pending") {
+      children.push(
+        el("p", { class: "pay-waiting" }, "Waiting for PayFast to confirm your payment. If you've just paid, this page updates by itself in a few seconds."),
+        el("p", { class: "muted small" }, "Didn't finish paying? You can start again below.")
+      );
+      ensurePaymentPolling();
+    } else {
+      stopPaymentPolling();
+    }
+
+    children.push(
+      error,
+      payBtn,
+      el("p", { class: "muted small" }, "You'll be taken to PayFast's secure payment page (card or instant EFT) and brought back here afterwards.")
+    );
+
+    payBtn.addEventListener("click", async () => {
+      payBtn.disabled = true;
+      payBtn.textContent = "Starting payment...";
+      error.hidden = true;
+      try {
+        const res = await fetch(`${window.LEAGUE_CONFIG.supabaseUrl}/functions/v1/payfast/team-pay`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", apikey: window.LEAGUE_CONFIG.supabaseAnonKey },
+          body: JSON.stringify({ code: team.access_code })
+        });
+        const body = await res.json().catch(() => ({}));
+        if (res.ok) {
+          postForm(body.action, body.fields);
+          return;
+        }
+        if (body.paid) {
+          await refresh(); // already paid (e.g. from the other teammate's phone)
+          return;
+        }
+        throw new Error(body.error || `HTTP ${res.status}`);
+      } catch (err) {
+        console.error(err);
+        payBtn.disabled = false;
+        payBtn.textContent = `Pay ${window.EntryFee.formatRand(price)} with PayFast`;
+        error.hidden = false;
+        error.textContent = err && err.message && err.message !== "Failed to fetch" ? err.message : "Couldn't start the payment - check your connection and try again.";
+      }
+    });
+
+    return el("div", { class: "card pay-gate" }, children);
   }
 
   // The rules the team accepted, for re-reading any time - collapsed by

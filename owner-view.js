@@ -53,7 +53,7 @@
       el("div", { class: "tabs-inline" }, [
         el("a", { class: `tab-inline ${tab === "dashboard" ? "active" : ""}`, href: "#/dashboard" }, "Dashboard"),
         el("a", { class: `tab-inline ${tab === "scorer-lab" ? "active" : ""}`, href: "#/scorer-lab" }, "Scorer Lab"),
-        el("a", { class: `tab-inline ${tab === "payments-lab" ? "active" : ""}`, href: "#/payments-lab" }, "Payments Lab")
+        el("a", { class: `tab-inline ${tab === "payments-lab" ? "active" : ""}`, href: "#/payments-lab" }, "Payments")
       ])
     );
 

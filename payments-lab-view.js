@@ -6,7 +6,7 @@
 // supabase/functions/payfast/index.ts.
 (function () {
   const { el, badge } = window.Render;
-  const { dbList } = window.DB;
+  const { dbList, dbInsert, dbUpdate } = window.DB;
 
   const POLL_MS = 3000;
   const POLL_TIMES = 20; // ~1 minute of watching after a payment
@@ -54,14 +54,173 @@
       onError(body.error || `Couldn't start the payment (HTTP ${res.status}).`);
       return;
     }
-    const form = el("form", { method: "post", action: body.action, style: "display:none" }, body.fields.map(([name, value]) => el("input", { type: "hidden", name, value })));
-    document.body.appendChild(form);
-    form.submit();
+    window.Render.postForm(body.action, body.fields);
+  }
+
+  // ---------- League payouts (the Owner's ledger) ----------
+  // Money from team entry fees lands with you; this shows, per league, what
+  // you owe the organiser. Payouts and refunds are done by hand outside the
+  // app - the buttons here only record that you did them. The maths lives in
+  // payments-ledger.js.
+
+  const { formatRand } = window.EntryFee;
+
+  async function loadLedger(box) {
+    box.innerHTML = "";
+    box.appendChild(el("div", { class: "card" }, [el("h3", {}, "League payouts"), el("p", { class: "muted" }, "Loading...")]));
+    let leagues, teams, payments, payouts;
+    try {
+      [leagues, teams, payments, payouts] = await Promise.all([dbList("leagues"), dbList("teams"), dbList("payments"), dbList("payouts")]);
+    } catch (err) {
+      console.error(err);
+      box.innerHTML = "";
+      box.appendChild(
+        el("div", { class: "card" }, [el("h3", {}, "League payouts"), el("p", { class: "empty-state" }, "Couldn't load - has sql/migration_011_entry_fees.sql been run?")])
+      );
+      return;
+    }
+
+    const teamsById = Object.fromEntries(teams.map((t) => [t.id, t]));
+    const sections = leagues
+      .filter((l) => window.EntryFee.leagueHasFee(l) || payments.some((p) => p.league_id === l.id && p.purpose === "team_entry"))
+      .map((league) =>
+        leagueSection(
+          league,
+          payments.filter((p) => p.league_id === league.id),
+          payouts.filter((p) => p.league_id === league.id),
+          teamsById,
+          () => loadLedger(box)
+        )
+      );
+
+    box.innerHTML = "";
+    box.appendChild(
+      el("div", { class: "card" }, [
+        el("h3", {}, "League payouts"),
+        el(
+          "p",
+          { class: "muted small" },
+          "Teams' entry fees are paid to you through PayFast. \"Still to pay organiser\" is the organiser's share of every paid team (plus the full amount of any refunded team, which you repay them). Record a payout here after you've paid the organiser."
+        ),
+        sections.length ? el("div", { class: "stack" }, sections) : el("p", { class: "empty-state" }, "No leagues with an entry fee yet.")
+      ])
+    );
+  }
+
+  function tile(label, value) {
+    return el("div", { class: "stat-tile" }, [el("div", { class: "stat-value" }, value), el("div", { class: "stat-label" }, label)]);
+  }
+
+  function leagueSection(league, payments, payouts, teamsById, reload) {
+    const ledger = window.PaymentsLedger.leagueLedger(payments, payouts);
+    const entries = payments.filter((p) => p.purpose === "team_entry" && (p.status === "complete" || p.status === "refunded"));
+
+    const rows = entries.map((p) => {
+      const team = teamsById[p.team_id];
+      const actions = [];
+      if (p.status === "complete") {
+        actions.push(
+          el(
+            "button",
+            {
+              class: "btn btn-ghost small",
+              type: "button",
+              onclick: async () => {
+                const name = team ? team.name : "this team";
+                if (!confirm(`Mark ${name}'s ${formatRand(p.amount_cents)} payment as refunded?\n\nDo this once the organiser has refunded the team. You will then owe the organiser the full ${formatRand(p.amount_cents)} back.`)) return;
+                await dbUpdate("payments", p.id, { status: "refunded" });
+                reload();
+              }
+            },
+            "Mark refunded"
+          )
+        );
+      }
+      return el("div", { class: "manage-row" }, [
+        el("div", {}, [
+          el("div", { class: "manage-row-name" }, [team ? team.name : "Team removed", badge(p.status, p.status === "complete" ? "green" : "neutral")]),
+          el("div", { class: "manage-row-meta" }, `${formatRand(p.amount_cents)} · ${formatWhen(p.created_at)}${p.pf_payment_id ? ` · PayFast #${p.pf_payment_id}` : ""}`)
+        ]),
+        el("div", { class: "row-actions" }, actions)
+      ]);
+    });
+
+    const amountInput = el("input", { class: "input", inputmode: "decimal", placeholder: "Amount paid (R)" });
+    const noteInput = el("input", { class: "input", placeholder: "Note (optional), e.g. EFT reference" });
+    const error = el("p", { class: "form-error", hidden: true });
+    // display:none (not the hidden attribute): .stack's own display rule would win.
+    const form = el("div", { class: "stack", style: "display:none" }, [
+      el("div", { class: "field-row" }, [amountInput, noteInput]),
+      error,
+      el(
+        "button",
+        {
+          class: "btn btn-primary small",
+          type: "button",
+          onclick: async () => {
+            const cents = window.EntryFee.parseRand(amountInput.value);
+            if (!cents || cents <= 0) {
+              error.hidden = false;
+              error.textContent = "Enter the amount you paid the organiser.";
+              return;
+            }
+            await dbInsert("payouts", { league_id: league.id, amount_cents: cents, note: noteInput.value.trim() || null });
+            reload();
+          }
+        },
+        "Save payout"
+      )
+    ]);
+    const payoutBtn = el(
+      "button",
+      {
+        class: "btn btn-primary small",
+        type: "button",
+        onclick: () => {
+          const opening = form.style.display === "none";
+          form.style.display = opening ? "flex" : "none";
+          if (opening && ledger.owedToOrganiser > 0) amountInput.value = (ledger.owedToOrganiser / 100).toFixed(2);
+        }
+      },
+      "Record a payout"
+    );
+
+    return el("div", { class: "card" }, [
+      el("h3", {}, league.name),
+      el(
+        "p",
+        { class: "muted small" },
+        window.EntryFee.leagueHasFee(league)
+          ? `Fee ${formatRand(league.entry_fee_cents)} + 20% = ${formatRand(window.EntryFee.priceFor(league.entry_fee_cents).total)} per team${league.payment_deadline ? ` · pay by ${window.Render.formatDate(league.payment_deadline)}` : ""}`
+          : "No entry fee set now"
+      ),
+      el("div", { class: "ledger-grid" }, [
+        tile("Teams paid", String(ledger.teamsPaid)),
+        tile("Collected", formatRand(ledger.collected)),
+        tile("Organiser share", formatRand(ledger.organiserShare)),
+        tile("Your 20%", formatRand(ledger.platformShare)),
+        tile("Refunded", `${ledger.teamsRefunded} · ${formatRand(ledger.refundedAmount)}`),
+        tile("Paid out so far", formatRand(ledger.paidOut))
+      ]),
+      el("div", {}, [
+        el("div", { class: "stat-label" }, "Still to pay organiser"),
+        el("div", { class: "ledger-owed" }, formatRand(ledger.owedToOrganiser)),
+        ledger.owedToOrganiser < 0 ? el("p", { class: "muted small" }, "You have paid the organiser more than they are owed (for example, a refund was marked after a payout).") : null,
+        ledger.teamsPending ? el("p", { class: "muted small" }, `${ledger.teamsPending} payment${ledger.teamsPending === 1 ? "" : "s"} still pending with PayFast.`) : null
+      ]),
+      el("div", { class: "row-actions" }, [payoutBtn]),
+      form,
+      rows.length ? el("div", { class: "stack" }, rows) : null
+    ]);
   }
 
   function mount(container) {
     if (pollTimer) clearInterval(pollTimer);
     container.innerHTML = "";
+
+    const ledgerBox = el("div", {}, []);
+    container.appendChild(ledgerBox);
+    loadLedger(ledgerBox);
 
     const banner = el("div", { class: "card" }, [el("p", { class: "muted" }, "Checking the payments function...")]);
     const message = el("p", { class: "muted" }, "");
@@ -70,7 +229,7 @@
 
     container.appendChild(
       el("div", { class: "card" }, [
-        el("h3", {}, "Payments Lab"),
+        el("h3", {}, "Payment test"),
         el("p", { class: "muted" }, "Owner-only test harness for PayFast. Makes a fixed R10.00 sandbox payment - no real money, no league or team is touched."),
         banner,
         el("div", { class: "row-actions" }, [payBtn]),

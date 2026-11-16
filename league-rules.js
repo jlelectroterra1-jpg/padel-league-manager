@@ -28,8 +28,9 @@
     // Always applies, so it's locked rather than an optional extra.
     { key: "court-fees", group: "Court fees", locked: true, text: "Court fees are paid separately, directly to the court, when the court is booked on the Playtomic app." },
 
-    // Entry-fee rules: part of the agreed base set, but skipped until
-    // payments exist - teams shouldn't be told about a fee that isn't there.
+    // Entry-fee rules: part of the agreed base set, but only added to a
+    // league that actually charges an entry fee (render/build's `payments`
+    // option) - teams shouldn't be told about a fee that isn't there.
     { key: "entry-fee", group: "Entry fee", locked: true, onlyWhen: "payments", text: "The entry fee is shown on your team link and is paid once per team, covering both partners. A team is registered only once its fee is paid, by the cut-off date set by the organiser." },
     { key: "refunds", group: "Entry fee", locked: true, onlyWhen: "payments", text: "Refunds for withdrawn teams are handled by the organiser." },
 
@@ -71,11 +72,14 @@
   }
 
   // Turns an editor config into the final, ordered list of rule texts.
-  function render(config) {
+  // options.payments = true adds the rules that only make sense when the
+  // league charges an entry fee.
+  function render(config, options) {
     config = config || defaultConfig();
+    options = options || {};
     const items = [];
     BASE_RULES.forEach((rule) => {
-      if (rule.onlyWhen) return;
+      if (rule.onlyWhen && !options[rule.onlyWhen]) return;
       if (!isOn(rule, config)) return;
       items.push({ key: rule.key, locked: !!rule.locked, text: fillText(rule, config) });
     });
@@ -87,9 +91,9 @@
   }
 
   // What gets stored on leagues.rules.
-  function build(config) {
+  function build(config, options) {
     config = config || defaultConfig();
-    return { config, items: render(config) };
+    return { config, items: render(config, options) };
   }
 
   // Splits a rule's text into plain text and {blank} parts, so an editor can

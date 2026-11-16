@@ -127,5 +127,18 @@
     );
   }
 
-  window.Render = { el, formatDate, badge, qs, genAccessCode, formatSets, scoreGrid, scoreInput, wireAutoAdvance, rulesList };
+  // Sends the browser to a payment page by posting a hidden form to it - how
+  // PayFast expects a payment to be started. `fields` is [[name, value], ...]
+  // in the order the server signed them.
+  function postForm(action, fields) {
+    const form = el(
+      "form",
+      { method: "post", action, style: "display:none" },
+      fields.map(([name, value]) => el("input", { type: "hidden", name, value }))
+    );
+    document.body.appendChild(form);
+    form.submit();
+  }
+
+  window.Render = { el, formatDate, badge, qs, genAccessCode, formatSets, scoreGrid, scoreInput, wireAutoAdvance, rulesList, postForm };
 })();

@@ -5,6 +5,7 @@
   const { dbList, dbGet, dbInsert, dbUpdate, dbDelete } = window.DB;
   const { rulesList } = window.Render;
   const LeagueRules = window.LeagueRules;
+  const EntryFee = window.EntryFee;
 
   const app = document.getElementById("app");
   const expandedTeams = new Set();
@@ -116,6 +117,21 @@
       el("option", { value: "4" }, "Top 4 (semi-finals)"),
       el("option", { value: "2" }, "Top 2 (final only)")
     ]);
+    // Optional entry fee. Empty (or 0) = a free league, exactly like every
+    // league before entry fees existed. The fee and cut-off are stored on the
+    // league; the platform's 20% is added by the payment function, never here.
+    const entryFee = el("input", { class: "input", inputmode: "decimal", placeholder: "e.g. 150 - leave empty for a free league" });
+    const deadline = el("input", { class: "input", type: "date" });
+    const feePreview = el("p", { class: "muted small fee-preview" }, "");
+    entryFee.addEventListener("input", () => {
+      const cents = EntryFee.parseRand(entryFee.value);
+      if (!cents) {
+        feePreview.textContent = "";
+        return;
+      }
+      const price = EntryFee.priceFor(cents);
+      feePreview.textContent = `Each team will pay ${EntryFee.formatRand(price.total)} (your ${EntryFee.formatRand(price.fee)} + ${EntryFee.formatRand(price.platform)} platform fee). You receive ${EntryFee.formatRand(price.fee)} per team.`;
+    });
     const error = el("p", { class: "form-error", hidden: true });
     // Every new league gets rules (the locked ones can't be removed), which
     // teams must accept before using their link - see league-rules.js.
@@ -129,6 +145,14 @@
       el("div", { class: "field-row" }, [field("Start date", startDate), field("Number of teams", numTeams)]),
       el("div", { class: "field-row" }, [field("Number of courts", numCourts), field("Playoff format", playoffSize)]),
       el("p", { class: "muted small" }, "Every match is 3 sets - each set won is worth 1 league point."),
+      el("h3", { class: "rules-heading" }, "Entry fee"),
+      el(
+        "p",
+        { class: "muted small" },
+        "Optional. Teams pay once per team (covering both partners) on their team link, after accepting the rules. They see one price: your fee plus a 20% platform fee. Two rules about the fee and refunds are added to your league rules automatically. Leave the fee empty for a free league. The fee can't be changed once the first team accepts the rules."
+      ),
+      el("div", { class: "field-row" }, [field("Entry fee per team (R)", entryFee), field("Payment cut-off date", deadline)]),
+      feePreview,
       el("h3", { class: "rules-heading" }, "League rules"),
       rulesIntro(),
       rules.node,
@@ -143,6 +167,28 @@
         error.textContent = "League name is required.";
         return;
       }
+      // Entry fee: empty or 0 means a free league; anything else must be a
+      // sensible amount with a cut-off date that hasn't passed.
+      let feeCents = 0;
+      if (entryFee.value.trim() !== "" && EntryFee.parseRand(entryFee.value) !== 0) {
+        feeCents = EntryFee.parseRand(entryFee.value);
+        const feeProblem = EntryFee.validateFee(feeCents);
+        if (feeProblem) {
+          error.hidden = false;
+          error.textContent = feeProblem;
+          return;
+        }
+        if (!deadline.value) {
+          error.hidden = false;
+          error.textContent = "Choose the date teams must pay by.";
+          return;
+        }
+        if (deadline.value < new Date().toISOString().slice(0, 10)) {
+          error.hidden = false;
+          error.textContent = "The payment cut-off date can't be in the past.";
+          return;
+        }
+      }
       createBtn.disabled = true;
       createBtn.textContent = "Creating...";
       error.hidden = true;
@@ -155,7 +201,10 @@
           num_courts: Number(numCourts.value) || 1,
           playoff_size: Number(playoffSize.value),
           status: "draft",
-          rules: LeagueRules.build(rules.getConfig())
+          // Fee columns are only sent for a league that has a fee, so a free
+          // league creates exactly the same row as before entry fees existed.
+          ...(feeCents ? { entry_fee_cents: feeCents, payment_deadline: deadline.value } : {}),
+          rules: LeagueRules.build(rules.getConfig(), { payments: !!feeCents })
         });
         navigate(`#/league/${league.id}/teams`);
       } catch (err) {
@@ -302,7 +351,7 @@
           render();
           return;
         }
-        await dbUpdate("leagues", league.id, { rules: LeagueRules.build(editor.getConfig()) });
+        await dbUpdate("leagues", league.id, { rules: LeagueRules.build(editor.getConfig(), { payments: EntryFee.leagueHasFee(league) }) });
         if (league.rules) {
           saveBtn.disabled = false;
           saved.hidden = false;
@@ -350,6 +399,8 @@
     // league without rules (every league created before rules existed) costs
     // no extra request here and never touches the rules_acceptances table.
     const acceptances = league && league.rules ? await dbList("rules_acceptances", { league_id: `eq.${leagueId}` }) : [];
+    // Likewise only a league with an entry fee has payments to show.
+    const payments = league && EntryFee.leagueHasFee(league) ? await dbList("team_payment_status", { league_id: `eq.${leagueId}` }) : [];
 
     app.innerHTML = "";
     if (!league) {
@@ -390,13 +441,13 @@
       )
     );
 
-    if (tab === "teams") app.appendChild(renderTeamsTab(league, teams, fixtures, results, acceptances));
+    if (tab === "teams") app.appendChild(renderTeamsTab(league, teams, fixtures, results, acceptances, payments));
     else if (tab === "fixtures") app.appendChild(renderFixturesTab(league, teams, fixtures, results));
     else if (tab === "standings") app.appendChild(renderStandingsTab(league, teams, fixtures, results));
     else if (tab === "playoffs") app.appendChild(renderPlayoffsTab(league, teams, fixtures, results));
     else if (tab === "confirmations") app.appendChild(renderConfirmationsTab(teams, fixtures, results));
     else if (tab === "disputes") app.appendChild(renderDisputesTab(teams, fixtures, results));
-    else app.appendChild(renderSettingsTab(league, acceptances));
+    else app.appendChild(renderSettingsTab(league, acceptances, payments));
   }
 
   // ---------- League-wide stats strip (shown above the tabs on every view) ----------
@@ -609,20 +660,53 @@
 
   // ---------- Teams tab ----------
 
-  function renderTeamsTab(league, teams, fixtures, results, acceptances) {
+  // The payment that matters per team: completed wins, then pending, then
+  // the most recent of whatever else (failed, refunded...). Rows arrive
+  // oldest first.
+  function paymentStatusByTeam(payments) {
+    const rank = { complete: 3, pending: 2 };
+    const byTeam = {};
+    payments.forEach((p) => {
+      const current = byTeam[p.team_id];
+      if (!current || (rank[p.status] || 1) >= (rank[current] || 1)) byTeam[p.team_id] = p.status;
+    });
+    return byTeam;
+  }
+
+  function paymentBadge(status) {
+    if (status === "complete") return badge("paid", "green");
+    if (status === "pending") return badge("payment pending", "blue");
+    if (status === "refunded") return badge("refunded", "neutral");
+    return badge("not paid", "amber");
+  }
+
+  function renderTeamsTab(league, teams, fixtures, results, acceptances, payments) {
     const teamsById = Object.fromEntries(teams.map((t) => [t.id, t]));
     const acceptedByTeam = Object.fromEntries(acceptances.map((a) => [a.team_id, a]));
+    const hasFee = EntryFee.leagueHasFee(league);
+    const paymentByTeam = hasFee ? paymentStatusByTeam(payments) : {};
+    const paidCount = teams.filter((t) => paymentByTeam[t.id] === "complete").length;
     const rows = teams.length
-      ? teams.map((team) => teamRow(league, team, teams, fixtures, teamsById, results, acceptedByTeam))
+      ? teams.map((team) => teamRow(league, team, teams, fixtures, teamsById, results, acceptedByTeam, paymentByTeam))
       : [el("p", { class: "empty-state" }, "No teams yet - add your fixed pairs above.")];
 
     return el("div", { class: "stack" }, [
       addTeamForm(league, teams),
-      el("div", { class: "card" }, [el("h3", {}, `Teams (${teams.length})`), el("div", { class: "stack" }, rows)])
+      el("div", { class: "card" }, [
+        el("h3", {}, `Teams (${teams.length})`),
+        hasFee
+          ? el(
+              "p",
+              { class: "muted small" },
+              `Entry fee ${EntryFee.formatRand(league.entry_fee_cents)} per team · ${paidCount} of ${teams.length} paid${league.payment_deadline ? ` · pay by ${formatDate(league.payment_deadline)}` : ""}`
+            )
+          : null,
+        el("div", { class: "stack" }, rows)
+      ])
     ]);
   }
 
-  function teamRow(league, team, allTeams, fixtures, teamsById, results, acceptedByTeam) {
+  function teamRow(league, team, allTeams, fixtures, teamsById, results, acceptedByTeam, paymentByTeam) {
     const expanded = expandedTeams.has(team.id);
     const editing = editingTeams.has(team.id);
     // Only meaningful for a league that has rules - otherwise no badge/line at all.
@@ -638,7 +722,8 @@
         el("div", { class: "team-row-name" }, [
           team.name,
           !team.active && badge("inactive", "neutral"),
-          league.rules && (accepted ? badge("rules accepted", "green") : badge("rules not accepted", "amber"))
+          league.rules && (accepted ? badge("rules accepted", "green") : badge("rules not accepted", "amber")),
+          EntryFee.leagueHasFee(league) && paymentBadge((paymentByTeam || {})[team.id])
         ]),
         el("div", { class: "muted small" }, `${team.player1} + ${team.player2}`),
         accepted ? el("div", { class: "muted small" }, `Rules accepted by ${accepted.accepted_name} · ${formatDate(accepted.created_at.slice(0, 10))}`) : null
@@ -1204,7 +1289,91 @@
 
   // ---------- Settings tab ----------
 
-  function renderSettingsTab(league, acceptances) {
+  // Entry fee card for a league that charges one. The cut-off date can always
+  // be extended (the organiser decides what happens to teams that missed it);
+  // the fee itself is locked once the first team has accepted the rules or any
+  // team has started paying, so nobody pays a different price from the one
+  // they agreed to.
+  function entryFeeCard(league, acceptances, payments) {
+    if (!EntryFee.leagueHasFee(league)) return null;
+    const locked = acceptances.length > 0 || payments.length > 0;
+    const fee = el("input", { class: "input", inputmode: "decimal", value: (league.entry_fee_cents / 100).toFixed(2) });
+    fee.disabled = locked;
+    const deadline = el("input", { class: "input", type: "date", value: league.payment_deadline || "" });
+    const error = el("p", { class: "form-error", hidden: true });
+    const saved = el("span", { class: "save-confirm", hidden: true }, "Saved");
+    const saveBtn = el("button", { class: "btn btn-primary", type: "button" }, "Save");
+    const preview = el("p", { class: "muted small fee-preview" }, "");
+
+    function showPreview() {
+      const price = EntryFee.priceFor(league.entry_fee_cents);
+      preview.textContent = `Teams pay ${EntryFee.formatRand(price.total)} each (your ${EntryFee.formatRand(price.fee)} + ${EntryFee.formatRand(price.platform)} platform fee).`;
+    }
+    showPreview();
+
+    saveBtn.addEventListener("click", async () => {
+      error.hidden = true;
+      const patch = {};
+      if (!deadline.value) {
+        error.hidden = false;
+        error.textContent = "Choose the date teams must pay by.";
+        return;
+      }
+      patch.payment_deadline = deadline.value;
+      if (!locked) {
+        const cents = EntryFee.parseRand(fee.value);
+        const problem = EntryFee.validateFee(cents);
+        if (problem) {
+          error.hidden = false;
+          error.textContent = problem;
+          return;
+        }
+        patch.entry_fee_cents = cents;
+      }
+      saveBtn.disabled = true;
+      try {
+        if (!locked) {
+          // A team may have accepted or paid since this page loaded.
+          const [nowAccepted, nowPaying] = await Promise.all([
+            dbList("rules_acceptances", { league_id: `eq.${league.id}` }),
+            dbList("team_payment_status", { league_id: `eq.${league.id}` })
+          ]);
+          if (nowAccepted.length || nowPaying.length) {
+            render();
+            return;
+          }
+        }
+        await dbUpdate("leagues", league.id, patch);
+        if (patch.entry_fee_cents !== undefined) league.entry_fee_cents = patch.entry_fee_cents;
+        showPreview();
+        saveBtn.disabled = false;
+        saved.hidden = false;
+        setTimeout(() => (saved.hidden = true), 1500);
+      } catch (err) {
+        console.error(err);
+        saveBtn.disabled = false;
+        error.hidden = false;
+        error.textContent = "Couldn't save - check your connection and try again.";
+      }
+    });
+
+    return el("div", { class: "card" }, [
+      el("h3", {}, "Entry fee"),
+      el(
+        "p",
+        { class: "muted small" },
+        locked
+          ? "The fee is locked now that teams have accepted the rules or started paying. You can still extend the payment cut-off date."
+          : "You can change the fee until the first team accepts the rules."
+      ),
+      el("div", { class: "field-row" }, [field("Entry fee per team (R)", fee), field("Payment cut-off date", deadline)]),
+      preview,
+      error,
+      el("div", { class: "field-row", style: "align-items:center;" }, [saveBtn, saved])
+    ]);
+  }
+
+  function renderSettingsTab(league, acceptances, payments) {
     const name = el("input", { class: "input", value: league.name });
     const description = el("input", { class: "input", value: league.description || "" });
     const startDate = el("input", { class: "input", type: "date", value: league.start_date || "" });
@@ -1244,7 +1413,7 @@
       setTimeout(() => (saved.hidden = true), 1500);
     });
 
-    return el("div", { class: "stack" }, [form, rulesCard(league, acceptances), endLeagueCard(league), deleteLeagueCard(league)]);
+    return el("div", { class: "stack" }, [form, entryFeeCard(league, acceptances, payments || []), rulesCard(league, acceptances), endLeagueCard(league), deleteLeagueCard(league)]);
   }
 
   // A checkbox styled as a pill switch (see .switch in style.css). Returns

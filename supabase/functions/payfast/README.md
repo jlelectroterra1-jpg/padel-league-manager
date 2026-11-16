@@ -1,12 +1,24 @@
 # PayFast Edge Function
 
-One Supabase Edge Function (`index.ts`, a single file) that creates PayFast payments and receives PayFast's confirmation (ITN). Step 1 is **sandbox only**: the Owner-only "Payments Lab" tab makes a fixed R10.00 test payment.
+One Supabase Edge Function (`index.ts`, a single file) that creates PayFast payments and receives PayFast's confirmation (ITN). Routes:
+
+- `GET /status` - is it set up (no secrets shown)
+- `POST /create` - Owner only: the fixed R10.00 test payment on the Owner's Payments tab
+- `POST /team-pay` - a team paying its league entry fee from its team link (no login: the team's private code is the credential). The price comes from the league's stored fee + 20%, never from the browser; it refuses after the league's cut-off date, before the rules are accepted, and when the team has already paid.
+- `POST /notify` - PayFast's confirmation; the only thing that can mark a payment complete
+
+Currently **sandbox only**.
 
 This folder is excluded from the published website (see `.github/workflows/deploy.yml`).
 
 ## 1. Database
 
-Run `sql/migration_010_payments.sql` in the Supabase SQL editor (adds `payments` and `payment_events`; touches nothing existing).
+Run, in order, in the Supabase SQL editor:
+
+1. `sql/migration_010_payments.sql` - adds `payments` and `payment_events`.
+2. `sql/migration_011_entry_fees.sql` - adds the league fee/cut-off columns, the payment split columns, the `team_payment_status` view (what team links and organisers may see: paid or not, nothing else) and the `payouts` table.
+
+Both are additive and safe to re-run.
 
 ## 2. PayFast sandbox account
 
@@ -47,7 +59,9 @@ Open `https://<project-ref>.supabase.co/functions/v1/payfast/status` in a browse
 
 ## 6. Try it
 
-Sign in as Owner → **Owner dashboard → Payments Lab → Pay R10 (test)**. Pay in the PayFast sandbox window with the sandbox test buyer; on return the payment flips from `pending` to `complete` within a few seconds.
+Sign in as Owner → **Owner dashboard → Payments → Pay R10 (test)**. Pay in the PayFast sandbox window with the sandbox test buyer; on return the payment flips from `pending` to `complete` within a few seconds.
+
+Team entry fee: create a league with an entry fee and cut-off date, add a team, open its team link, accept the rules, and pay with the sandbox buyer. The Teams tab shows "paid", and the Owner's Payments tab shows the league's payout ledger.
 
 Negative checks (nothing should be created or changed):
 ```
@@ -60,6 +74,8 @@ The first returns 401. The second returns 200 (so nothing retries) but is logged
 
 ```
 node --test supabase/functions/payfast/payfast.test.mjs
+node --test supabase/functions/payfast/team-pay.test.mjs
+node --test supabase/functions/payfast/shared.test.mjs
 ```
 (Node 24+; runs the same TypeScript file that gets deployed, against fakes.)
 

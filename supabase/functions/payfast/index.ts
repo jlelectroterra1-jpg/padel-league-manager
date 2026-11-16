@@ -41,9 +41,26 @@ export const PAYFAST_IP_RANGES = [
   "144.126.193.139/32"
 ];
 
-// Step 1 only ever makes this one fixed test payment (R10.00), whatever the
-// browser asks for - the browser doesn't get a say in the amount at all.
+// The Owner's test payment is always this fixed R10.00, whatever the browser
+// asks for - the browser doesn't get a say in the amount at all.
 export const TEST_AMOUNT_CENTS = 1000;
+
+// The platform adds this much on top of the organiser's entry fee. The team
+// pays one price (fee + 20%). A copy of this lives in entry-fee.js for the
+// pages to display prices; shared.test.mjs checks the two always agree.
+export const PLATFORM_PERCENT = 20;
+
+export function priceFor(feeCents: number): { fee: number; platform: number; total: number } {
+  const platform = Math.round((feeCents * PLATFORM_PERCENT) / 100);
+  return { fee: feeCents, platform, total: feeCents + platform };
+}
+
+// Today's date in South Africa (UTC+2, no daylight saving) as YYYY-MM-DD, to
+// compare against a league's payment cut-off date. The cut-off day itself is
+// still open for payment.
+export function sastDate(now: Date): string {
+  return new Date(now.getTime() + 2 * 60 * 60 * 1000).toISOString().slice(0, 10);
+}
 
 // ---------- types ----------
 
@@ -67,11 +84,29 @@ export interface PaymentRow {
   pf_payment_id?: string | null;
 }
 
+export interface TeamRow {
+  id: string;
+  name: string;
+  league_id: string;
+}
+
+export interface LeagueRow {
+  id: string;
+  name: string;
+  entry_fee_cents: number | null;
+  payment_deadline: string | null;
+  rules: unknown;
+}
+
 export interface Db {
   getUser(token: string): Promise<{ id: string } | null>;
   isOwner(userId: string): Promise<boolean>;
   insertPayment(row: Record<string, unknown>): Promise<void>;
   getPayment(id: string): Promise<PaymentRow | null>;
+  getTeamByCode(code: string): Promise<TeamRow | null>;
+  getLeague(id: string): Promise<LeagueRow | null>;
+  hasAcceptance(teamId: string): Promise<boolean>;
+  findTeamEntryPayments(teamId: string): Promise<PaymentRow[]>;
   // Only changes a payment that is still 'pending'; true if it changed one.
   updatePaymentIfPending(id: string, patch: Record<string, unknown>): Promise<boolean>;
   logEvent(row: { payment_id: string | null; outcome: string; payload: unknown }): Promise<void>;
@@ -82,6 +117,7 @@ export interface Deps {
   fetch: typeof fetch;
   db: Db;
   uuid: () => string;
+  now: () => Date;
 }
 
 // ---------- config ----------
@@ -263,6 +299,84 @@ export async function handleCreate(req: Request, deps: Deps): Promise<Response> 
   return json({ action: `${PAYFAST_HOSTS[config.mode]}/eng/process`, fields, paymentId, mode: config.mode }, 200, cors);
 }
 
+// A team paying its league entry fee from its team link. There is no login on
+// a team link - the team's private access code is the credential, exactly as
+// it is for submitting scores. Everything that matters is decided here, not
+// in the browser: the price (from the league's stored fee), whether the cut-off
+// has passed, and whether the rules were accepted first.
+export async function handleTeamPay(req: Request, deps: Deps): Promise<Response> {
+  const { config, db } = deps;
+  const cors = corsHeaders(config);
+
+  let body: { code?: unknown } = {};
+  try {
+    body = await req.json();
+  } catch {
+    return json({ error: "Bad request." }, 400, cors);
+  }
+  const code = typeof body.code === "string" ? body.code.trim().toUpperCase() : "";
+  if (!/^[A-Z0-9]{4,16}$/.test(code)) return json({ error: "Team code not recognised." }, 404, cors);
+
+  const team = await db.getTeamByCode(code);
+  if (!team) return json({ error: "Team code not recognised." }, 404, cors);
+
+  const league = await db.getLeague(team.league_id);
+  if (!league || !league.entry_fee_cents || league.entry_fee_cents <= 0) {
+    return json({ error: "This league has no entry fee." }, 400, cors);
+  }
+
+  if (league.payment_deadline && sastDate(deps.now()) > league.payment_deadline) {
+    return json({ error: "Payment is closed - the cut-off date has passed. Please contact your league organiser.", closed: true }, 403, cors);
+  }
+
+  // Rules first, then payment - the same order the team link shows them in.
+  if (league.rules && !(await db.hasAcceptance(team.id))) {
+    return json({ error: "Please accept the league rules first." }, 403, cors);
+  }
+
+  const existing = await db.findTeamEntryPayments(team.id);
+  if (existing.some((p) => p.status === "complete")) {
+    return json({ error: "Your entry fee is already paid.", paid: true }, 409, cors);
+  }
+
+  const price = priceFor(league.entry_fee_cents);
+  const amounts = { amount_cents: price.total, fee_cents: price.fee, platform_cents: price.platform };
+
+  // A team that opened PayFast and came back without paying still has a
+  // pending payment - reuse it (rather than leave an orphan that a late
+  // confirmation could still complete) and keep its amount current.
+  let paymentId = existing.find((p) => p.status === "pending")?.id;
+  if (paymentId) {
+    await db.updatePaymentIfPending(paymentId, amounts);
+  } else {
+    paymentId = deps.uuid();
+    try {
+      await db.insertPayment({ id: paymentId, purpose: "team_entry", status: "pending", league_id: league.id, team_id: team.id, ...amounts });
+    } catch (err) {
+      // Two taps / two phones at once: the database allows only one live
+      // entry payment per team, so the other request won - use its row.
+      const again = (await db.findTeamEntryPayments(team.id)).find((p) => p.status === "pending");
+      if (!again) throw err;
+      paymentId = again.id;
+    }
+  }
+
+  const returnUrl = `${config.siteUrl}/team/${code}`;
+  const fields: Pair[] = [
+    ["merchant_id", config.merchantId],
+    ["merchant_key", config.merchantKey],
+    ["return_url", returnUrl],
+    ["cancel_url", returnUrl],
+    ["notify_url", `${config.supabaseUrl}/functions/v1/payfast/notify`],
+    ["m_payment_id", paymentId],
+    ["amount", formatAmount(price.total)],
+    ["item_name", `${league.name} - entry fee`.trim().slice(0, 100)]
+  ];
+  fields.push(["signature", makeSignature(fields, config.passphrase)]);
+
+  return json({ action: `${PAYFAST_HOSTS[config.mode]}/eng/process`, fields, paymentId, mode: config.mode }, 200, cors);
+}
+
 // PayFast's confirmation. Answers 200 to everything it can read (so PayFast
 // doesn't keep retrying a message we've deliberately refused) and records the
 // outcome - including every refusal - in payment_events.
@@ -338,6 +452,7 @@ export async function handleRequest(req: Request, deps: Deps): Promise<Response>
   const path = new URL(req.url).pathname.replace(/\/+$/, "");
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders(deps.config) });
   if (path.endsWith("/create") && req.method === "POST") return handleCreate(req, deps);
+  if (path.endsWith("/team-pay") && req.method === "POST") return handleTeamPay(req, deps);
   if (path.endsWith("/notify") && req.method === "POST") return handleNotify(req, deps);
   return json({ error: "Not found" }, 404);
 }
@@ -384,6 +499,30 @@ export function makeDb(config: Config, fetchImpl: typeof fetch): Db {
       const rows = await res.json();
       return rows[0] || null;
     },
+    async getTeamByCode(code) {
+      const res = await ok(await rest(`teams?access_code=eq.${encodeURIComponent(code)}&select=id,name,league_id`), "getTeamByCode");
+      const rows = await res.json();
+      return rows[0] || null;
+    },
+    async getLeague(id) {
+      const res = await ok(
+        await rest(`leagues?id=eq.${encodeURIComponent(id)}&select=id,name,entry_fee_cents,payment_deadline,rules`),
+        "getLeague"
+      );
+      const rows = await res.json();
+      return rows[0] || null;
+    },
+    async hasAcceptance(teamId) {
+      const res = await ok(await rest(`rules_acceptances?team_id=eq.${encodeURIComponent(teamId)}&select=id`), "hasAcceptance");
+      return (await res.json()).length > 0;
+    },
+    async findTeamEntryPayments(teamId) {
+      const res = await ok(
+        await rest(`payments?team_id=eq.${encodeURIComponent(teamId)}&purpose=eq.team_entry&select=id,purpose,status,amount_cents`),
+        "findTeamEntryPayments"
+      );
+      return await res.json();
+    },
     async updatePaymentIfPending(id, patch) {
       const res = await ok(
         await rest(`payments?id=eq.${encodeURIComponent(id)}&status=eq.pending`, {
@@ -409,7 +548,7 @@ if (typeof Deno !== "undefined") {
     if (path.endsWith("/status") && req.method === "GET") return handleStatus(Deno.env);
     try {
       const config = readConfig(Deno.env);
-      return await handleRequest(req, { config, fetch, db: makeDb(config, fetch), uuid: () => crypto.randomUUID() });
+      return await handleRequest(req, { config, fetch, db: makeDb(config, fetch), uuid: () => crypto.randomUUID(), now: () => new Date() });
     } catch (err) {
       console.error(err);
       return json({ error: "Payments aren't set up correctly yet." }, 500);

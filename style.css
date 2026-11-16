@@ -511,6 +511,18 @@ body{
 .rules-gate h2{ margin-bottom:8px; }
 .rules-gate .field{ margin:14px 0 10px; }
 
+/* entry-fee payment screen on the team link */
+.pay-gate h2{ margin-bottom:8px; }
+.pay-price{ margin:16px 0 8px; padding:16px; border:1px solid var(--line); border-radius:var(--radius-sm); background:var(--field); text-align:center; }
+.pay-amount{ font-family:var(--font-display); font-weight:800; font-size:34px; color:var(--brand); }
+.pay-waiting{ padding:10px 12px; border-radius:var(--radius-sm); background:rgba(245,158,11,0.12); border:1px solid rgba(245,158,11,0.35); }
+.pay-gate .btn{ margin-top:6px; }
+
+/* organiser entry-fee fields and the Owner's payout ledger */
+.fee-preview{ margin:4px 0 0; }
+.ledger-grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(120px,1fr)); gap:8px; margin:10px 0; }
+.ledger-owed{ font-family:var(--font-display); font-weight:800; font-size:20px; }
+
 /* danger zone */
 .danger-card{ border-color:rgba(239,68,68,0.35); }
 .danger-card .input{ margin:10px 0; }
