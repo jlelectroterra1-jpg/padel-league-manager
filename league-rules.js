@@ -25,6 +25,9 @@
     { key: "forfeit", group: "Forfeits and playoffs", locked: true, text: "A team that forfeits earns 0 points. The opponent gets the win and 2 league points, and no set scores are recorded." },
     { key: "playoffs", group: "Forfeits and playoffs", locked: true, text: "After the league stage, the top teams (the number is set by the organiser) go into the playoffs, seeded by the table. Playoffs earn no league points, and a forfeit in a playoff match sends the opponent through." },
 
+    // Always applies, so it's locked rather than an optional extra.
+    { key: "court-fees", group: "Court fees", locked: true, text: "Court fees are paid separately, directly to the court, when the court is booked on the Playtomic app." },
+
     // Entry-fee rules: part of the agreed base set, but skipped until
     // payments exist - teams shouldn't be told about a fee that isn't there.
     { key: "entry-fee", group: "Entry fee", locked: true, onlyWhen: "payments", text: "The entry fee is shown on your team link and is paid once per team, covering both partners. A team is registered only once its fee is paid, by the cut-off date set by the organiser." },
@@ -40,7 +43,6 @@
     { key: "conduct", group: "Conduct", defaultOn: true, text: "Players must behave respectfully on and off the court. The organiser may remove a team for serious misconduct." },
 
     // ---------- Optional, off by default ----------
-    { key: "court-fees", group: "Extras", defaultOn: false, text: "Court fees are paid separately at the venue." },
     { key: "balls", group: "Extras", defaultOn: false, text: "Teams provide their own balls." },
     { key: "substitutes", group: "Extras", defaultOn: false, text: "Substitutes are allowed for one partner with the organiser's approval, but not in playoffs." },
     { key: "playtomic", group: "Extras", defaultOn: false, text: "Teams must also update the match score on Playtomic." }
