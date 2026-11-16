@@ -137,5 +137,24 @@
     lsWrite(table, lsRead(table).filter((r) => r.id !== id));
   }
 
-  window.DB = { dbList, dbGet, dbInsert, dbUpdate, dbDelete, hasSupabase };
+  // Calls a Postgres function (e.g. create_league) with the signed-in user's
+  // token. The thrown error carries the function's own message (and the HTTP
+  // status) so callers can show it, e.g. "League name is required."
+  async function dbRpc(fn, args) {
+    if (!hasSupabase()) throw new Error("This needs a configured Supabase project.");
+    const res = await fetch(`${window.LEAGUE_CONFIG.supabaseUrl}/rest/v1/rpc/${fn}`, {
+      method: "POST",
+      headers: headers(),
+      body: JSON.stringify(args || {})
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      const err = new Error(body.message || `rpc ${fn} failed: ${res.status}`);
+      err.status = res.status;
+      throw err;
+    }
+    return res.json();
+  }
+
+  window.DB = { dbList, dbGet, dbInsert, dbUpdate, dbDelete, dbRpc, hasSupabase };
 })();

@@ -5,6 +5,7 @@ One Supabase Edge Function (`index.ts`, a single file) that creates PayFast paym
 - `GET /status` - is it set up (no secrets shown)
 - `POST /create` - Owner only: the fixed R10.00 test payment on the Owner's Payments tab
 - `POST /team-pay` - a team paying its league entry fee from its team link (no login: the team's private code is the credential). The price comes from the league's stored fee + 20%, never from the browser; it refuses after the league's cut-off date, before the rules are accepted, and when the team has already paid.
+- `POST /league-pay` - an organiser paying the fixed R50 to activate a league they created (needs their login, and they must be an admin of that league). A league that hasn't paid can't take team entry fees (`/team-pay` refuses), and its team links show "not open yet".
 - `POST /notify` - PayFast's confirmation; the only thing that can mark a payment complete
 
 Currently **sandbox only**.
@@ -18,7 +19,9 @@ Run, in order, in the Supabase SQL editor:
 1. `sql/migration_010_payments.sql` - adds `payments` and `payment_events`.
 2. `sql/migration_011_entry_fees.sql` - adds the league fee/cut-off columns, the payment split columns, the `team_payment_status` view (what team links and organisers may see: paid or not, nothing else) and the `payouts` table.
 
-Both are additive and safe to re-run.
+3. `sql/migration_012_league_activation.sql` - organisers are active on sign-up, only the Owner can insert into `leagues` directly (everyone else uses the `create_league()` function, which marks an organiser's league as needing activation), plus the `league_activations` table and `league_activation_status` view.
+
+All are safe to re-run. Migration 012 changes the `leagues` security rules: reading, updating and deleting stay open exactly as before; only inserting is restricted. To undo: drop the four policies it creates on `leagues` and run `create policy "public read/write" on leagues for all using (true) with check (true);`
 
 ## 2. PayFast sandbox account
 
@@ -76,6 +79,7 @@ The first returns 401. The second returns 200 (so nothing retries) but is logged
 node --test supabase/functions/payfast/payfast.test.mjs
 node --test supabase/functions/payfast/team-pay.test.mjs
 node --test supabase/functions/payfast/shared.test.mjs
+node --test supabase/functions/payfast/league-pay.test.mjs
 ```
 (Node 24+; runs the same TypeScript file that gets deployed, against fakes.)
 

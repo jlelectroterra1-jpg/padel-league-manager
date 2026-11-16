@@ -63,7 +63,7 @@
             email: session.user.email,
             phone: meta.phone || null,
             role: "organiser",
-            status: "pending"
+            status: "active"
           });
         }
 

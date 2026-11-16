@@ -16,6 +16,7 @@
     if (parts[0] === "league" && parts[1]) {
       return { view: "league", leagueId: parts[1], tab: parts[2] || "teams" };
     }
+    if (parts[0] === "new") return { view: "new" };
     return { view: "leagues" };
   }
 
@@ -39,6 +40,11 @@
   async function render() {
     const scrollY = window.scrollY;
     const route = parseHash();
+    stopActivatePolling();
+    // A signed-in organiser's token is sent with every request (db.js picks it
+    // up when auth.js is loaded) - make sure it hasn't expired. With no
+    // session this does nothing, and requests use the public key as always.
+    if (window.Auth) await window.Auth.getValidSession();
     // Only show a loading placeholder on the very first render (#app is
     // still empty). Every later call to render() - triggered by clicking a
     // tab, expanding a row, saving a score, confirming a result, anything -
@@ -57,6 +63,8 @@
     try {
       if (route.view === "leagues") {
         await renderLeaguesView();
+      } else if (route.view === "new") {
+        await renderNewLeagueView();
       } else {
         await renderLeagueDetail(route.leagueId, route.tab);
       }
@@ -82,11 +90,36 @@
       { class: "stack" },
       leagues.length
         ? leagues.map(leagueCard)
-        : el("p", { class: "empty-state" }, "No leagues yet - create your first one below.")
+        : el("p", { class: "empty-state" }, "No leagues yet.")
     );
 
     app.appendChild(el("div", { class: "card" }, [el("h2", {}, "Your leagues"), list]));
-    app.appendChild(newLeagueForm());
+    app.appendChild(
+      el("div", { class: "card" }, [
+        el("a", { class: "btn btn-primary", href: "#/new" }, "+ Create a league"),
+        el("p", { class: "muted small" }, "You need an organiser account to create a league, and each league costs R50 to activate.")
+      ])
+    );
+  }
+
+  // Creating a league needs a signed-in, active organiser (or the Owner):
+  // the database only lets create_league() make one for them.
+  async function renderNewLeagueView() {
+    // Local (no Supabase) test mode has no accounts - skip the sign-in check.
+    const localMode = !window.DB.hasSupabase();
+    const session = window.Auth && !localMode ? await window.Auth.getValidSession() : null;
+    const me = localMode ? { role: "owner" } : session ? await dbGet("organisers", session.user.id) : null;
+    if (!me || (!localMode && me.status !== "active")) {
+      location.href = "login.html";
+      return;
+    }
+    app.innerHTML = "";
+    app.appendChild(
+      el("div", { class: "detail-header" }, [
+        el("a", { class: "back-link", href: me.role === "owner" ? "owner.html" : "my-leagues.html" }, "← Back")
+      ])
+    );
+    app.appendChild(newLeagueForm(me));
   }
 
   function leagueCard(league) {
@@ -106,7 +139,16 @@
     return { draft: "neutral", active: "blue", playoffs: "amber", completed: "green", archived: "neutral" }[status] || "neutral";
   }
 
-  function newLeagueForm() {
+  // The real database only lets create_league() make a league (it also
+  // marks an organiser's league as needing the R50); local test mode has no
+  // such function, so it just stores the league.
+  async function createLeague(payload) {
+    if (window.DB.hasSupabase()) return window.DB.dbRpc("create_league", { p: payload });
+    const league = await dbInsert("leagues", { ...payload, status: "draft" });
+    return { id: league.id, needs_activation: false };
+  }
+
+  function newLeagueForm(me) {
     const name = el("input", { class: "input", placeholder: "e.g. Friday Night Padel League" });
     const description = el("input", { class: "input", placeholder: "Optional description" });
     const startDate = el("input", { class: "input", type: "date" });
@@ -140,6 +182,9 @@
 
     const form = el("form", { class: "card" }, [
       el("h2", {}, "Create a new league"),
+      me && me.role === "organiser"
+        ? el("p", { class: "muted small" }, "After you create the league you'll be asked to pay R50 to activate it. Your teams' links start working once it's paid.")
+        : null,
       field("League name", name),
       field("Description", description),
       el("div", { class: "field-row" }, [field("Start date", startDate), field("Number of teams", numTeams)]),
@@ -193,26 +238,31 @@
       createBtn.textContent = "Creating...";
       error.hidden = true;
       try {
-        const league = await dbInsert("leagues", {
+        const created = await createLeague({
           name: name.value.trim(),
           description: description.value.trim() || null,
           start_date: startDate.value || null,
           num_teams: Number(numTeams.value) || null,
           num_courts: Number(numCourts.value) || 1,
           playoff_size: Number(playoffSize.value),
-          status: "draft",
           // Fee columns are only sent for a league that has a fee, so a free
           // league creates exactly the same row as before entry fees existed.
           ...(feeCents ? { entry_fee_cents: feeCents, payment_deadline: deadline.value } : {}),
           rules: LeagueRules.build(rules.getConfig(), { payments: !!feeCents })
         });
-        navigate(`#/league/${league.id}/teams`);
+        // An organiser's new league goes straight to the R50 pay screen.
+        navigate(`#/league/${created.id}/${created.needs_activation ? "activate" : "teams"}`);
       } catch (err) {
         console.error(err);
         createBtn.disabled = false;
         createBtn.textContent = "Create league";
         error.hidden = false;
-        error.textContent = "Couldn't create the league - check your connection and try again.";
+        error.textContent =
+          err.status === 401
+            ? "Your session has expired - please log in again."
+            : err.status && err.message
+              ? err.message
+              : "Couldn't create the league - check your connection and try again.";
       }
     });
 
@@ -384,7 +434,7 @@
   // ---------- League detail ----------
 
   async function renderLeagueDetail(leagueId, tab) {
-    const [league, teams, fixtures, results] = await Promise.all([
+    const [league, teams, fixtures, results, activationRows] = await Promise.all([
       dbGet("leagues", leagueId),
       dbList("teams", { league_id: `eq.${leagueId}` }),
       dbList("fixtures", { league_id: `eq.${leagueId}` }),
@@ -393,8 +443,12 @@
       // ran on every tab switch/action in admin, including ones that don't
       // even touch results (e.g. expanding a team row), so an unscoped
       // fetch here was wasted on nearly every click.
-      dbList("results", { select: "*,fixtures!inner(id)", "fixtures.league_id": `eq.${leagueId}` })
+      dbList("results", { select: "*,fixtures!inner(id)", "fixtures.league_id": `eq.${leagueId}` }),
+      // Has an organiser's league paid its R50? (A league with no row here
+      // never needed to - every league from before activation existed.)
+      dbList("league_activation_status", { league_id: `eq.${leagueId}` })
     ]);
+    const activation = activationRows[0] || null;
     // Only leagues that actually have rules have acceptances to look up - a
     // league without rules (every league created before rules existed) costs
     // no extra request here and never touches the rules_acceptances table.
@@ -418,6 +472,12 @@
         badge(league.status, statusKind(league.status))
       ])
     );
+
+    if (tab === "activate") {
+      app.appendChild(renderActivateTab(league, activation));
+      return;
+    }
+    if (activation && !activation.paid) app.appendChild(activationBanner(league));
 
     app.appendChild(leagueStatsStrip(teams, fixtures, results));
 
@@ -448,6 +508,113 @@
     else if (tab === "confirmations") app.appendChild(renderConfirmationsTab(teams, fixtures, results));
     else if (tab === "disputes") app.appendChild(renderDisputesTab(teams, fixtures, results));
     else app.appendChild(renderSettingsTab(league, acceptances, payments));
+  }
+
+  // ---------- League activation (the R50) ----------
+
+  let activateTimer = null;
+
+  function stopActivatePolling() {
+    if (activateTimer) clearInterval(activateTimer);
+    activateTimer = null;
+  }
+
+  // PayFast confirms a payment a few seconds after it's made, so coming back
+  // from PayFast may briefly still show unpaid - check every few seconds and
+  // move on to the league the moment it is.
+  function startActivatePolling(leagueId) {
+    stopActivatePolling();
+    let checks = 0;
+    activateTimer = setInterval(async () => {
+      checks += 1;
+      if (checks > 60) {
+        stopActivatePolling();
+        return;
+      }
+      try {
+        const rows = await dbList("league_activation_status", { league_id: `eq.${leagueId}` });
+        if (rows[0] && rows[0].paid) {
+          stopActivatePolling();
+          navigate(`#/league/${leagueId}/teams`);
+        }
+      } catch (err) {
+        console.error(err);
+      }
+    }, 3000);
+  }
+
+  function activationBanner(league) {
+    return el("div", { class: "card notice notice-warn" }, [
+      el("h3", {}, "This league isn't activated yet"),
+      el("p", { class: "muted" }, "Your teams' links won't work until you pay the R50 activation fee."),
+      el("a", { class: "btn btn-primary small", href: `#/league/${league.id}/activate` }, "Activate - pay R50")
+    ]);
+  }
+
+  // The price is shown here, but the amount is fixed on the server
+  // (/league-pay) - this page can't change what is charged.
+  function renderActivateTab(league, activation) {
+    const open = el("a", { class: "btn btn-primary", href: `#/league/${league.id}/teams` }, "Open my league");
+    if (!activation) {
+      return el("div", { class: "card" }, [el("h3", {}, "Nothing to pay"), el("p", { class: "muted" }, "This league is already open."), open]);
+    }
+    if (activation.paid) {
+      return el("div", { class: "card" }, [el("h3", {}, "League activated"), el("p", { class: "muted" }, "Thanks - your teams' links are working."), open]);
+    }
+
+    const error = el("p", { class: "form-error", hidden: true });
+    const payBtn = el("button", { class: "btn btn-primary", type: "button" }, "Pay R50.00 with PayFast");
+    payBtn.addEventListener("click", async () => {
+      payBtn.disabled = true;
+      payBtn.textContent = "Starting payment...";
+      error.hidden = true;
+      try {
+        const session = await window.Auth.getValidSession();
+        if (!session) {
+          location.href = "login.html";
+          return;
+        }
+        const res = await fetch(`${window.LEAGUE_CONFIG.supabaseUrl}/functions/v1/payfast/league-pay`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            apikey: window.LEAGUE_CONFIG.supabaseAnonKey,
+            Authorization: `Bearer ${session.access_token}`
+          },
+          body: JSON.stringify({ league_id: league.id })
+        });
+        const body = await res.json().catch(() => ({}));
+        if (res.ok) {
+          window.Render.postForm(body.action, body.fields);
+          return;
+        }
+        if (body.paid) {
+          navigate(`#/league/${league.id}/teams`);
+          return;
+        }
+        throw new Error(body.error || `HTTP ${res.status}`);
+      } catch (err) {
+        console.error(err);
+        payBtn.disabled = false;
+        payBtn.textContent = "Pay R50.00 with PayFast";
+        error.hidden = false;
+        error.textContent = err && err.message && err.message !== "Failed to fetch" ? err.message : "Couldn't start the payment - check your connection and try again.";
+      }
+    });
+
+    startActivatePolling(league.id);
+
+    return el("div", { class: "card pay-gate" }, [
+      el("div", { class: "muted small" }, league.name),
+      el("h2", {}, "Activate your league"),
+      el("p", { class: "muted" }, "Activating a league costs a once-off R50. Until you pay, your teams' links won't open and teams can't pay their entry fees."),
+      el("div", { class: "pay-price" }, [el("div", { class: "pay-amount" }, "R50.00"), el("div", { class: "muted small" }, "once per league")]),
+      el("p", { class: "muted small" }, "Already paid? This page updates by itself within a few seconds."),
+      error,
+      payBtn,
+      el("p", { class: "muted small" }, "You'll be taken to PayFast's secure payment page (card or instant EFT) and brought back here afterwards."),
+      el("p", { class: "muted small" }, [el("a", { href: `#/league/${league.id}/teams`, style: "color:var(--brand)" }, "Set up my league first")])
+    ]);
   }
 
   // ---------- League-wide stats strip (shown above the tabs on every view) ----------

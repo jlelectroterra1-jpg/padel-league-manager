@@ -16,7 +16,7 @@ const CONFIG = {
   serviceKey: "svc"
 };
 
-function makeWorld({ league = {}, accepted = true, now = "2026-12-01T10:00:00Z", payments = [], insertFails = false } = {}) {
+function makeWorld({ league = {}, accepted = true, now = "2026-12-01T10:00:00Z", payments = [], insertFails = false, activation = null } = {}) {
   const world = {
     team: { id: "team-1", name: "Smashers", league_id: "league-1" },
     league: { id: "league-1", name: "Friday League", entry_fee_cents: 15000, payment_deadline: "2026-12-10", rules: { items: [] }, ...league },
@@ -30,6 +30,7 @@ function makeWorld({ league = {}, accepted = true, now = "2026-12-01T10:00:00Z",
     async getTeamByCode(code) { return code === "ABC123" ? world.team : null; },
     async getLeague() { return world.league; },
     async hasAcceptance() { return accepted; },
+    async getLeagueActivation() { return activation; },
     async findTeamEntryPayments() { return world.payments.map((p) => ({ ...p })); },
     async insertPayment(row) {
       if (insertFails) {
@@ -134,6 +135,21 @@ test("rules must be accepted before paying", async () => {
   // A league with no rules doesn't ask for acceptance.
   const noRules = makeWorld({ accepted: false, league: { rules: null } });
   assert.equal((await handleRequest(post({ code: "ABC123" }), noRules.deps)).status, 200);
+});
+
+test("a league that has not paid its R50 activation cannot take entry fees", async () => {
+  const w = makeWorld({ activation: { paid: false } });
+  const res = await handleRequest(post({ code: "ABC123" }), w.deps);
+  assert.equal(res.status, 403);
+  assert.equal((await res.json()).notOpen, true);
+  assert.equal(w.inserted.length, 0);
+});
+
+test("an activated league (or one that never needed activating) takes entry fees", async () => {
+  for (const activation of [{ paid: true }, null]) {
+    const w = makeWorld({ activation });
+    assert.equal((await handleRequest(post({ code: "ABC123" }), w.deps)).status, 200);
+  }
 });
 
 test("an already-paid team cannot pay twice", async () => {

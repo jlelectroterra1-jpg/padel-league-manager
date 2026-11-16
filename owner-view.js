@@ -71,10 +71,17 @@
       return;
     }
 
-    const [organisers, leagues, leagueAdmins] = await Promise.all([dbList("organisers"), dbList("leagues"), dbList("league_admins")]);
+    const [organisers, leagues, leagueAdmins, activations] = await Promise.all([
+      dbList("organisers"),
+      dbList("leagues"),
+      dbList("league_admins"),
+      dbList("league_activation_status")
+    ]);
+    // Leagues an organiser created that haven't paid their R50 yet.
+    const unpaidLeagueIds = new Set(activations.filter((a) => !a.paid).map((a) => a.league_id));
     app.appendChild(statsStrip(organisers, leagues));
     app.appendChild(organisersCard(organisers, leagueAdmins));
-    app.appendChild(leaguesCard(leagues, organisers, leagueAdmins));
+    app.appendChild(leaguesCard(leagues, organisers, leagueAdmins, unpaidLeagueIds));
   }
 
   async function logout() {
@@ -149,10 +156,10 @@
 
   // ---------- Leagues ----------
 
-  function leaguesCard(leagues, organisers, leagueAdmins) {
+  function leaguesCard(leagues, organisers, leagueAdmins, unpaidLeagueIds) {
     const activeOrganisers = organisers.filter((o) => o.role === "organiser" && o.status === "active");
     const organisersById = Object.fromEntries(organisers.map((o) => [o.id, o]));
-    const rows = leagues.map((l) => leagueRow(l, leagueAdmins, activeOrganisers, organisersById));
+    const rows = leagues.map((l) => leagueRow(l, leagueAdmins, activeOrganisers, organisersById, unpaidLeagueIds.has(l.id)));
     return el("div", { class: "card" }, [
       el("h3", {}, `Leagues (${leagues.length})`),
       rows.length ? el("div", { class: "stack" }, rows) : el("p", { class: "empty-state" }, "No leagues yet.")
@@ -163,7 +170,7 @@
     return { draft: "neutral", active: "blue", playoffs: "amber", completed: "green", archived: "neutral" }[status] || "neutral";
   }
 
-  function leagueRow(league, leagueAdmins, activeOrganisers, organisersById) {
+  function leagueRow(league, leagueAdmins, activeOrganisers, organisersById, unpaid) {
     const admins = leagueAdmins
       .filter((a) => a.league_id === league.id)
       .map((a) => organisersById[a.organiser_id])
@@ -171,7 +178,7 @@
 
     return el("div", { class: "manage-row" }, [
       el("div", {}, [
-        el("div", { class: "manage-row-name" }, [league.name, badge(league.status, statusKind(league.status))]),
+        el("div", { class: "manage-row-name" }, [league.name, badge(league.status, statusKind(league.status)), unpaid && badge("not activated", "amber")]),
         el("div", { class: "manage-row-meta" }, [
           admins.length ? `Admins: ${admins.map((o) => o.name).join(", ")}` : "Unassigned",
           league.num_teams ? ` · ${league.num_teams} teams target` : "",

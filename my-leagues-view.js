@@ -38,6 +38,10 @@
     const memberships = await dbList("league_admins", { organiser_id: `eq.${organiser.id}` });
     const leagueIds = memberships.map((m) => m.league_id);
     const leagues = leagueIds.length ? await dbList("leagues", { id: `in.(${leagueIds.join(",")})` }) : [];
+    // Which of them still need their R50 activation (a league with no row
+    // there never needed one).
+    const activations = leagueIds.length ? await dbList("league_activation_status", { league_id: `in.(${leagueIds.join(",")})` }) : [];
+    const unpaid = new Set(activations.filter((a) => !a.paid).map((a) => a.league_id));
     app.innerHTML = "";
 
     app.appendChild(
@@ -49,10 +53,13 @@
 
     app.appendChild(
       el("div", { class: "card" }, [
-        el("h3", {}, "My leagues"),
+        el("div", { class: "detail-header" }, [
+          el("h3", {}, "My leagues"),
+          el("a", { class: "btn btn-primary small", href: "admin.html#/new" }, "+ Create a league")
+        ]),
         leagues.length
-          ? el("div", { class: "stack" }, leagues.map(leagueCard))
-          : el("p", { class: "empty-state" }, "No leagues assigned to you yet - contact the league owner.")
+          ? el("div", { class: "stack" }, leagues.map((l) => leagueCard(l, unpaid.has(l.id))))
+          : el("p", { class: "empty-state" }, "You haven't created a league yet. Create your first league - each league costs R50 to activate.")
       ])
     );
   }
@@ -66,8 +73,10 @@
     return { draft: "neutral", active: "blue", playoffs: "amber", completed: "green", archived: "neutral" }[status] || "neutral";
   }
 
-  function leagueCard(league) {
-    return el("a", { class: "league-row", href: `admin.html#/league/${league.id}/teams` }, [
+  function leagueCard(league, needsActivation) {
+    // A league that hasn't paid its R50 opens on the pay screen.
+    const href = `admin.html#/league/${league.id}/${needsActivation ? "activate" : "teams"}`;
+    return el("a", { class: "league-row", href }, [
       el("div", {}, [
         el("div", { class: "league-row-name" }, league.name),
         el("div", { class: "muted small" }, [
@@ -75,7 +84,7 @@
           league.start_date ? ` · starts ${formatDate(league.start_date)}` : ""
         ].join(""))
       ]),
-      badge(league.status, statusKind(league.status))
+      needsActivation ? badge("not activated - pay R50", "amber") : badge(league.status, statusKind(league.status))
     ]);
   }
 })();

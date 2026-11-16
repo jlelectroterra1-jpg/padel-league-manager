@@ -68,9 +68,15 @@
   async function loadLedger(box) {
     box.innerHTML = "";
     box.appendChild(el("div", { class: "card" }, [el("h3", {}, "League payouts"), el("p", { class: "muted" }, "Loading...")]));
-    let leagues, teams, payments, payouts;
+    let leagues, teams, payments, payouts, activations;
     try {
-      [leagues, teams, payments, payouts] = await Promise.all([dbList("leagues"), dbList("teams"), dbList("payments"), dbList("payouts")]);
+      [leagues, teams, payments, payouts, activations] = await Promise.all([
+        dbList("leagues"),
+        dbList("teams"),
+        dbList("payments"),
+        dbList("payouts"),
+        dbList("league_activation_status")
+      ]);
     } catch (err) {
       console.error(err);
       box.innerHTML = "";
@@ -93,7 +99,21 @@
         )
       );
 
+    // The R50 league activation fees: all yours (nothing to pay out).
+    const activationPayments = payments.filter((p) => p.purpose === "league_activation" && p.status === "complete");
+    const awaitingActivation = activations.filter((a) => !a.paid).length;
+
     box.innerHTML = "";
+    box.appendChild(
+      el("div", { class: "card" }, [
+        el("h3", {}, "League activation fees"),
+        el("div", { class: "ledger-grid" }, [
+          tile("Leagues activated", String(activationPayments.length)),
+          tile("Collected", formatRand(activationPayments.reduce((total, p) => total + p.amount_cents, 0))),
+          tile("Waiting to pay", String(awaitingActivation))
+        ])
+      ])
+    );
     box.appendChild(
       el("div", { class: "card" }, [
         el("h3", {}, "League payouts"),

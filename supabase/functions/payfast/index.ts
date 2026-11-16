@@ -50,6 +50,10 @@ export const TEST_AMOUNT_CENTS = 1000;
 // pages to display prices; shared.test.mjs checks the two always agree.
 export const PLATFORM_PERCENT = 20;
 
+// What an organiser pays, once per league, to activate it. Fixed here on the
+// server - the browser never says what it costs. All of it is the platform's.
+export const LEAGUE_ACTIVATION_CENTS = 5000;
+
 export function priceFor(feeCents: number): { fee: number; platform: number; total: number } {
   const platform = Math.round((feeCents * PLATFORM_PERCENT) / 100);
   return { fee: feeCents, platform, total: feeCents + platform };
@@ -106,6 +110,11 @@ export interface Db {
   getTeamByCode(code: string): Promise<TeamRow | null>;
   getLeague(id: string): Promise<LeagueRow | null>;
   hasAcceptance(teamId: string): Promise<boolean>;
+  // null = this league never needed activating (an old or Owner-made league);
+  // otherwise whether its activation fee has been paid.
+  getLeagueActivation(leagueId: string): Promise<{ paid: boolean } | null>;
+  isLeagueAdmin(userId: string, leagueId: string): Promise<boolean>;
+  findLeagueActivationPayments(leagueId: string): Promise<PaymentRow[]>;
   findTeamEntryPayments(teamId: string): Promise<PaymentRow[]>;
   // Only changes a payment that is still 'pending'; true if it changed one.
   updatePaymentIfPending(id: string, patch: Record<string, unknown>): Promise<boolean>;
@@ -325,6 +334,12 @@ export async function handleTeamPay(req: Request, deps: Deps): Promise<Response>
     return json({ error: "This league has no entry fee." }, 400, cors);
   }
 
+  // An organiser's league that hasn't paid its R50 can't take entry fees.
+  const activation = await db.getLeagueActivation(league.id);
+  if (activation && !activation.paid) {
+    return json({ error: "This league isn't open yet. Please contact your league organiser.", notOpen: true }, 403, cors);
+  }
+
   if (league.payment_deadline && sastDate(deps.now()) > league.payment_deadline) {
     return json({ error: "Payment is closed - the cut-off date has passed. Please contact your league organiser.", closed: true }, 403, cors);
   }
@@ -371,6 +386,70 @@ export async function handleTeamPay(req: Request, deps: Deps): Promise<Response>
     ["m_payment_id", paymentId],
     ["amount", formatAmount(price.total)],
     ["item_name", `${league.name} - entry fee`.trim().slice(0, 100)]
+  ];
+  fields.push(["signature", makeSignature(fields, config.passphrase)]);
+
+  return json({ action: `${PAYFAST_HOSTS[config.mode]}/eng/process`, fields, paymentId, mode: config.mode }, 200, cors);
+}
+
+// An organiser paying the R50 to activate a league they created. Needs their
+// login (like /create); they must be an admin of that league (or the Owner).
+// The league must actually need activating and not already be paid.
+export async function handleLeaguePay(req: Request, deps: Deps): Promise<Response> {
+  const { config, db } = deps;
+  const cors = corsHeaders(config);
+
+  const auth = req.headers.get("authorization") || "";
+  const token = auth.toLowerCase().startsWith("bearer ") ? auth.slice(7).trim() : "";
+  if (!token) return json({ error: "Sign in first." }, 401, cors);
+  const user = await db.getUser(token);
+  if (!user) return json({ error: "Sign in first." }, 401, cors);
+
+  let body: { league_id?: unknown } = {};
+  try {
+    body = await req.json();
+  } catch {
+    return json({ error: "Bad request." }, 400, cors);
+  }
+  const leagueId = typeof body.league_id === "string" ? body.league_id.trim() : "";
+  if (!/^[0-9a-f-]{36}$/i.test(leagueId)) return json({ error: "League not found." }, 404, cors);
+
+  const allowed = (await db.isOwner(user.id)) || (await db.isLeagueAdmin(user.id, leagueId));
+  if (!allowed) return json({ error: "You aren't an organiser of this league." }, 403, cors);
+
+  const league = await db.getLeague(leagueId);
+  if (!league) return json({ error: "League not found." }, 404, cors);
+
+  const activation = await db.getLeagueActivation(leagueId);
+  if (!activation) return json({ error: "This league doesn't need activating." }, 400, cors);
+  if (activation.paid) return json({ error: "This league is already activated.", paid: true }, 409, cors);
+
+  const amounts = { amount_cents: LEAGUE_ACTIVATION_CENTS, fee_cents: 0, platform_cents: LEAGUE_ACTIVATION_CENTS };
+  const existing = await db.findLeagueActivationPayments(leagueId);
+  let paymentId = existing.find((p) => p.status === "pending")?.id;
+  if (!paymentId) {
+    paymentId = deps.uuid();
+    try {
+      await db.insertPayment({ id: paymentId, purpose: "league_activation", status: "pending", league_id: leagueId, created_by: user.id, ...amounts });
+    } catch (err) {
+      // Two taps at once: only one live activation payment per league is
+      // allowed, so use the one the other request created.
+      const again = (await db.findLeagueActivationPayments(leagueId)).find((p) => p.status === "pending");
+      if (!again) throw err;
+      paymentId = again.id;
+    }
+  }
+
+  const returnUrl = `${config.siteUrl}/admin.html#/league/${leagueId}/activate`;
+  const fields: Pair[] = [
+    ["merchant_id", config.merchantId],
+    ["merchant_key", config.merchantKey],
+    ["return_url", returnUrl],
+    ["cancel_url", returnUrl],
+    ["notify_url", `${config.supabaseUrl}/functions/v1/payfast/notify`],
+    ["m_payment_id", paymentId],
+    ["amount", formatAmount(LEAGUE_ACTIVATION_CENTS)],
+    ["item_name", `Activate league - ${league.name}`.trim().slice(0, 100)]
   ];
   fields.push(["signature", makeSignature(fields, config.passphrase)]);
 
@@ -453,6 +532,7 @@ export async function handleRequest(req: Request, deps: Deps): Promise<Response>
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders(deps.config) });
   if (path.endsWith("/create") && req.method === "POST") return handleCreate(req, deps);
   if (path.endsWith("/team-pay") && req.method === "POST") return handleTeamPay(req, deps);
+  if (path.endsWith("/league-pay") && req.method === "POST") return handleLeaguePay(req, deps);
   if (path.endsWith("/notify") && req.method === "POST") return handleNotify(req, deps);
   return json({ error: "Not found" }, 404);
 }
@@ -511,6 +591,25 @@ export function makeDb(config: Config, fetchImpl: typeof fetch): Db {
       );
       const rows = await res.json();
       return rows[0] || null;
+    },
+    async getLeagueActivation(leagueId) {
+      const res = await ok(await rest(`league_activation_status?league_id=eq.${encodeURIComponent(leagueId)}&select=paid`), "getLeagueActivation");
+      const rows = await res.json();
+      return rows[0] ? { paid: !!rows[0].paid } : null;
+    },
+    async isLeagueAdmin(userId, leagueId) {
+      const res = await ok(
+        await rest(`league_admins?league_id=eq.${encodeURIComponent(leagueId)}&organiser_id=eq.${encodeURIComponent(userId)}&select=id`),
+        "isLeagueAdmin"
+      );
+      return (await res.json()).length > 0;
+    },
+    async findLeagueActivationPayments(leagueId) {
+      const res = await ok(
+        await rest(`payments?league_id=eq.${encodeURIComponent(leagueId)}&purpose=eq.league_activation&select=id,purpose,status,amount_cents`),
+        "findLeagueActivationPayments"
+      );
+      return await res.json();
     },
     async hasAcceptance(teamId) {
       const res = await ok(await rest(`rules_acceptances?team_id=eq.${encodeURIComponent(teamId)}&select=id`), "hasAcceptance");

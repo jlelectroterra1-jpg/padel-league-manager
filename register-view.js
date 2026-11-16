@@ -1,8 +1,9 @@
 // Public organiser self-registration (register.html). Creates a Supabase
 // Auth user via the normal public sign-up endpoint (auth.js) and a matching
-// `organisers` profile row, pinned to role=organiser/status=pending by the
-// RLS insert policy regardless of what's sent here - an Owner has to
-// approve the account (owner.html) before it can sign in anywhere useful.
+// `organisers` profile row, pinned to role=organiser/status=active by the
+// RLS insert policy regardless of what's sent here. Accounts are active at
+// once (paying R50 to activate each league is the filter); the Owner can
+// still suspend one from owner.html.
 (function () {
   const { el } = window.Render;
   const app = document.getElementById("app");
@@ -34,7 +35,7 @@
 
     const form = el("form", { class: "card" }, [
       el("h2", {}, "Organiser sign up"),
-      el("p", { class: "muted small" }, "Create your organiser account, then wait for the league owner to approve it before you can access My Leagues."),
+      el("p", { class: "muted small" }, "Create your organiser account, then set up your first league. Each league costs R50 to activate."),
       field("Name", name),
       field("Email", email),
       field("Phone", phone),
@@ -83,16 +84,15 @@
             email: email.value.trim(),
             phone: phone.value.trim() || null,
             role: "organiser",
-            status: "pending"
+            status: "active"
           });
-          app.innerHTML = "";
-          app.appendChild(window.Auth.renderStatusNotice("pending"));
+          location.href = "my-leagues.html";
         } else {
           app.innerHTML = "";
           app.appendChild(
             el("div", { class: "card" }, [
               el("h3", {}, "Check your email"),
-              el("p", { class: "muted" }, "We've sent a confirmation link to your email. Once confirmed, log in and your account will show as pending approval.")
+              el("p", { class: "muted" }, "We've sent a confirmation link to your email. Once confirmed, log in and you can create your first league.")
             ])
           );
         }

@@ -99,7 +99,13 @@
   }
 
   async function loadLeagueData(team) {
-    const [league, allTeams, fixtures, results, availability] = await Promise.all([
+    // Has the organiser paid the R50 to activate this league? Most leagues
+    // (every league from before activation existed) have no such requirement.
+    // "none" and "paid" can't go back, so once seen they are reused on later
+    // refreshes (refresh() is deliberately light); "unpaid" is re-checked.
+    const cachedActivation =
+      ctx && ctx.team && ctx.team.id === team.id && ctx.activationState && ctx.activationState !== "unpaid" ? ctx.activationState : null;
+    const [league, allTeams, fixtures, results, availability, activationRows] = await Promise.all([
       dbList("leagues", { id: `eq.${team.league_id}` }).then((r) => r[0]),
       dbList("teams", { league_id: `eq.${team.league_id}` }),
       dbList("fixtures", { league_id: `eq.${team.league_id}` }),
@@ -109,13 +115,22 @@
       // load, growing forever as any league (not just this one) plays more
       // matches.
       dbList("results", { select: "*,fixtures!inner(id)", "fixtures.league_id": `eq.${team.league_id}` }),
-      dbList("availability", { league_id: `eq.${team.league_id}` })
+      dbList("availability", { league_id: `eq.${team.league_id}` }),
+      cachedActivation ? Promise.resolve([]) : dbList("league_activation_status", { league_id: `eq.${team.league_id}` })
     ]);
+    const activationState = cachedActivation || (!activationRows[0] ? "none" : activationRows[0].paid ? "paid" : "unpaid");
     const teamsById = Object.fromEntries(allTeams.map((t) => [t.id, t]));
     // Re-resolve from the just-fetched teams list (by id) rather than
     // trusting the possibly-stale `team` passed in - keeps e.g. a name
     // change made elsewhere in the league picked up on every refresh.
     const freshTeam = teamsById[team.id] || team;
+
+    // League not activated yet: nothing else is shown (or looked up).
+    if (activationState === "unpaid") {
+      ctx = { team: freshTeam, league, teamsById, fixtures, results, availability, accepted: null, payment: null, activationState };
+      render();
+      return;
+    }
 
     // Only a league that has rules asks its teams to accept them - a league
     // without any (every league created before rules existed) skips this
@@ -144,7 +159,7 @@
           : latestPayment(await dbList("team_payment_status", { team_id: `eq.${freshTeam.id}` }));
     }
 
-    ctx = { team: freshTeam, league, teamsById, fixtures, results, availability, accepted, payment };
+    ctx = { team: freshTeam, league, teamsById, fixtures, results, availability, accepted, payment, activationState };
     render();
   }
 
@@ -163,6 +178,14 @@
     const { team, league, teamsById, fixtures, results } = ctx;
     const allTeams = Object.values(teamsById);
     app.innerHTML = "";
+
+    // An organiser's league that hasn't paid its R50 isn't open to teams yet.
+    if (ctx.activationState === "unpaid") {
+      stopPaymentPolling();
+      app.appendChild(notOpenCard(league));
+      window.scrollTo(0, 0);
+      return;
+    }
 
     // First thing a team sees on a league that has rules: read and accept
     // them. The dashboard below only renders once they have.
@@ -341,6 +364,15 @@
     });
 
     return form;
+  }
+
+  function notOpenCard(league) {
+    return el("div", { class: "card pay-gate" }, [
+      el("div", { class: "muted small" }, league ? league.name : ""),
+      el("h2", {}, "This league isn't open yet"),
+      el("p", { class: "muted" }, "Your league organiser still needs to activate the league. Please check back soon, or contact your organiser."),
+      el("button", { class: "btn btn-ghost", type: "button", onclick: () => refresh() }, "Check again")
+    ]);
   }
 
   // ---------- Entry fee ----------
