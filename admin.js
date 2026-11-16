@@ -70,6 +70,8 @@
     const scrollY = window.scrollY;
     const route = parseHash();
     stopActivatePolling();
+    document.body.classList.remove("sheet-open");
+    if (route.view !== "league") app.classList.remove("with-league-nav");
     // Only show a loading placeholder on the very first render (#app is
     // still empty). Every later call to render() - triggered by clicking a
     // tab, expanding a row, saving a score, confirming a result, anything -
@@ -559,30 +561,142 @@
       settings: "Settings"
     };
 
-    // Wide screens: a row of tabs. Phones: one dropdown showing the current
-    // section (a long scrolling row hid the other sections; a dropdown with a
-    // chevron says "there are more" and takes a single line).
-    const sectionPicker = el("select", { class: "input tab-picker-select", "aria-label": "League section" },
-      Object.keys(tabLabels).map((t) => el("option", { value: t }, tabLabels[t]))
-    );
-    sectionPicker.value = tab;
-    sectionPicker.addEventListener("change", () => navigate(`#/league/${leagueId}/${sectionPicker.value}`));
+    // Wide screens: a row of tabs. Phones: an app-style bar at the bottom of
+    // the screen (Teams / Fixtures / Standings / More) with a highlight that
+    // slides between the buttons, and a "More" sheet that slides up for the
+    // rest. Both are always on screen where a thumb reaches, so nobody has to
+    // discover a hidden scrolling row.
     app.appendChild(
-      el("div", { class: "tabs-inline has-picker" },
-        Object.keys(tabLabels).map((t) =>
-          el("a", { class: `tab-inline ${t === tab ? "active" : ""}`, href: `#/league/${leagueId}/${t}` }, tabLabels[t])
+      el("div", { class: "tabs-inline" },
+        LEAGUE_SECTIONS.map((s) =>
+          el("a", { class: `tab-inline ${s.id === tab ? "active" : ""}`, href: `#/league/${leagueId}/${s.id}` }, tabLabels[s.id])
         )
       )
     );
-    app.appendChild(el("label", { class: "tab-picker" }, [el("span", { class: "tab-picker-label" }, "Section"), sectionPicker]));
+    app.classList.add("with-league-nav");
+    const slideFrom = leagueNavMotion(tab);
 
-    if (tab === "teams") app.appendChild(renderTeamsTab(league, teams, fixtures, results, acceptances, payments));
-    else if (tab === "fixtures") app.appendChild(renderFixturesTab(league, teams, fixtures, results));
-    else if (tab === "standings") app.appendChild(renderStandingsTab(league, teams, fixtures, results));
-    else if (tab === "playoffs") app.appendChild(renderPlayoffsTab(league, teams, fixtures, results));
-    else if (tab === "confirmations") app.appendChild(renderConfirmationsTab(teams, fixtures, results));
-    else if (tab === "disputes") app.appendChild(renderDisputesTab(teams, fixtures, results));
-    else app.appendChild(renderSettingsTab(league, acceptances, payments));
+    const tabBody =
+      tab === "teams" ? renderTeamsTab(league, teams, fixtures, results, acceptances, payments)
+      : tab === "fixtures" ? renderFixturesTab(league, teams, fixtures, results)
+      : tab === "standings" ? renderStandingsTab(league, teams, fixtures, results)
+      : tab === "playoffs" ? renderPlayoffsTab(league, teams, fixtures, results)
+      : tab === "confirmations" ? renderConfirmationsTab(teams, fixtures, results)
+      : tab === "disputes" ? renderDisputesTab(teams, fixtures, results)
+      : renderSettingsTab(league, acceptances, payments);
+    // Only a real change of section slides in; an in-place refresh (expanding
+    // a row, saving a score) leaves the page still.
+    app.appendChild(el("div", { class: `league-section${slideFrom ? ` slide-${slideFrom}` : ""}` }, [tabBody]));
+
+    app.appendChild(leagueBottomNav(leagueId, tab, { confirmations: pendingCount, disputes: disputedCount }));
+  }
+
+  // ---------- League section navigation (phone) ----------
+
+  const LEAGUE_SECTIONS = [
+    { id: "teams", label: "Teams", icon: "users", sub: "Players, links and payments" },
+    { id: "fixtures", label: "Fixtures", icon: "calendar", sub: "Matches and scores" },
+    { id: "standings", label: "Standings", icon: "chart", sub: "The league table" },
+    { id: "confirmations", label: "Confirmations", icon: "checkcircle", sub: "Scores waiting to be approved" },
+    { id: "disputes", label: "Disputes", icon: "alert", sub: "Scores teams disagree on" },
+    { id: "playoffs", label: "Playoffs", icon: "trophy", sub: "Knockout rounds" },
+    { id: "settings", label: "Settings", icon: "sliders", sub: "Rules, dates and danger zone" }
+  ];
+  const MAIN_SECTIONS = 3; // the first three get their own button; the rest live under More
+
+  // Where the highlight was last, so it can glide from there to the new spot
+  // (the page is rebuilt on every change, so it has to be remembered here).
+  let lastNavSlot = null;
+  let lastNavTab = null;
+
+  function navSlotOf(tab) {
+    const i = LEAGUE_SECTIONS.findIndex((s) => s.id === tab);
+    return i >= 0 && i < MAIN_SECTIONS ? i : MAIN_SECTIONS; // anything else is "More"
+  }
+
+  // Which way the new section should slide in from ("right" when moving on to
+  // a later section, "left" going back), or null when the section is unchanged.
+  function leagueNavMotion(tab) {
+    if (lastNavTab === null || lastNavTab === tab) return null;
+    const idx = (t) => LEAGUE_SECTIONS.findIndex((s) => s.id === t);
+    return idx(tab) > idx(lastNavTab) ? "right" : "left";
+  }
+
+  function leagueBottomNav(leagueId, tab, counts) {
+    const { icon } = window.Render;
+    const slot = navSlotOf(tab);
+    const prevSlot = lastNavSlot === null ? slot : lastNavSlot;
+    const moreCount = (counts.confirmations || 0) + (counts.disputes || 0);
+    const inMore = slot === MAIN_SECTIONS;
+    const current = LEAGUE_SECTIONS.find((s) => s.id === tab);
+
+    // ----- the "More" sheet -----
+    const sheet = el("div", { class: "more-sheet", role: "dialog", "aria-modal": "true", "aria-label": "More sections", "aria-hidden": "true" }, [
+      el("div", { class: "more-sheet-handle" }),
+      el("div", { class: "more-sheet-title" }, "More"),
+      ...LEAGUE_SECTIONS.slice(MAIN_SECTIONS).map((s) => {
+        const n = s.id === "confirmations" ? counts.confirmations : s.id === "disputes" ? counts.disputes : 0;
+        return el("a", {
+          class: `more-item${s.id === tab ? " active" : ""}${n && s.id === "disputes" ? " urgent" : ""}`,
+          href: `#/league/${leagueId}/${s.id}`,
+          onclick: () => setSheet(false)
+        }, [
+          el("span", { class: "more-item-icon" }, [icon(s.icon, 22)]),
+          el("span", { class: "more-item-text" }, [el("strong", {}, s.label), el("small", {}, s.sub)]),
+          n ? el("span", { class: "more-item-count" }, String(n)) : null,
+          icon("arrow", 18)
+        ]);
+      })
+    ]);
+    const backdrop = el("div", { class: "more-backdrop", onclick: () => setSheet(false) });
+
+    function setSheet(open) {
+      sheet.classList.toggle("open", open);
+      backdrop.classList.toggle("open", open);
+      sheet.setAttribute("aria-hidden", open ? "false" : "true");
+      moreBtn.setAttribute("aria-expanded", open ? "true" : "false");
+      document.body.classList.toggle("sheet-open", open);
+    }
+
+    // ----- the bar -----
+    const items = LEAGUE_SECTIONS.slice(0, MAIN_SECTIONS).map((s, i) =>
+      el("button", {
+        class: `league-nav-item${slot === i ? " active" : ""}`,
+        type: "button",
+        "aria-current": slot === i ? "page" : undefined,
+        onclick: () => {
+          if (s.id !== tab) navigate(`#/league/${leagueId}/${s.id}`);
+        }
+      }, [icon(s.icon, 22), el("span", { class: "league-nav-label" }, s.label)])
+    );
+    const moreBtn = el("button", {
+      class: `league-nav-item${inMore ? " active" : ""}`,
+      type: "button",
+      "aria-haspopup": "dialog",
+      "aria-expanded": "false",
+      onclick: () => setSheet(!sheet.classList.contains("open"))
+    }, [
+      icon(inMore && current ? current.icon : "dots", 22),
+      el("span", { class: "league-nav-label" }, inMore && current ? current.label : "More"),
+      moreCount ? el("span", { class: "nav-count" }, String(moreCount)) : null
+    ]);
+
+    const pill = el("span", { class: "league-nav-pill", "aria-hidden": "true" });
+    pill.style.transform = `translateX(${prevSlot * 100}%)`;
+    const bar = el("nav", { class: "league-nav", "aria-label": "League sections" }, [pill, ...items, moreBtn]);
+
+    // Glide the highlight from the old button to the new one, then remember it.
+    if (prevSlot !== slot) {
+      requestAnimationFrame(() => requestAnimationFrame(() => (pill.style.transform = `translateX(${slot * 100}%)`)));
+    }
+    lastNavSlot = slot;
+    lastNavTab = tab;
+
+    const wrap = el("div", { class: "league-nav-wrap" }, [backdrop, sheet, bar]);
+    wrap.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") setSheet(false);
+    });
+    return wrap;
   }
 
   // ---------- League activation (the R50) ----------
