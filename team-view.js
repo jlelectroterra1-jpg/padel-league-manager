@@ -156,7 +156,15 @@
     // refreshes (refresh() is deliberately light); "unpaid" is re-checked.
     const cachedActivation =
       ctx && ctx.team && ctx.team.id === team.id && ctx.activationState && ctx.activationState !== "unpaid" ? ctx.activationState : null;
-    const [league, allTeams, fixtures, results, availability, activationRows] = await Promise.all([
+    // What we already know about this team from an earlier load (null on the
+    // very first one). On the first load the rules acceptance and the payment
+    // are fetched in the SAME round of requests as everything else - asking
+    // for them afterwards, one after the other, made the page wait for three
+    // separate trips to the database before showing anything.
+    const known = ctx && ctx.team && ctx.team.id === team.id ? ctx : null;
+    const wantAccepted = !known || (!!(known.league && known.league.rules) && !known.accepted);
+    const wantPayment = !known || (window.EntryFee.leagueHasFee(known.league) && !(known.payment && known.payment.status === "complete"));
+    const [league, allTeams, fixtures, results, availability, activationRows, acceptedRows, paymentRows] = await Promise.all([
       dbList("leagues", { id: `eq.${team.league_id}` }).then((r) => r[0]),
       dbList("teams", { league_id: `eq.${team.league_id}` }),
       dbList("fixtures", { league_id: `eq.${team.league_id}` }),
@@ -167,7 +175,9 @@
       // matches.
       dbList("results", { select: "*,fixtures!inner(id)", "fixtures.league_id": `eq.${team.league_id}` }),
       dbList("availability", { league_id: `eq.${team.league_id}` }),
-      cachedActivation ? Promise.resolve([]) : dbList("league_activation_status", { league_id: `eq.${team.league_id}` })
+      cachedActivation ? Promise.resolve([]) : dbList("league_activation_status", { league_id: `eq.${team.league_id}` }),
+      wantAccepted ? dbList("rules_acceptances", { team_id: `eq.${team.id}` }) : Promise.resolve(null),
+      wantPayment ? dbList("team_payment_status", { team_id: `eq.${team.id}` }) : Promise.resolve(null)
     ]);
     const activationState = cachedActivation || (!activationRows[0] ? "none" : activationRows[0].paid ? "paid" : "unpaid");
     const teamsById = Object.fromEntries(allTeams.map((t) => [t.id, t]));
@@ -194,7 +204,7 @@
       accepted =
         ctx && ctx.accepted && ctx.team && ctx.team.id === freshTeam.id
           ? ctx.accepted
-          : (await dbList("rules_acceptances", { team_id: `eq.${freshTeam.id}` }))[0] || null;
+          : (acceptedRows || (await dbList("rules_acceptances", { team_id: `eq.${freshTeam.id}` })))[0] || null;
     }
 
     // Only a league that charges an entry fee has payments to look up, and
@@ -207,7 +217,7 @@
       payment =
         ctx && ctx.payment && ctx.payment.status === "complete" && ctx.team && ctx.team.id === freshTeam.id
           ? ctx.payment
-          : latestPayment(await dbList("team_payment_status", { team_id: `eq.${freshTeam.id}` }));
+          : latestPayment(paymentRows || (await dbList("team_payment_status", { team_id: `eq.${freshTeam.id}` })));
     }
 
     ctx = { team: freshTeam, league, teamsById, fixtures, results, availability, accepted, payment, activationState };
@@ -616,31 +626,66 @@
   // ---------- Entry fee ----------
 
   let paymentPollTimer = null;
+  let paymentPolling = false;
+  let paymentPollTick = null;
 
   function stopPaymentPolling() {
-    if (paymentPollTimer) clearInterval(paymentPollTimer);
+    paymentPolling = false;
+    paymentPollTick = null;
+    if (paymentPollTimer) clearTimeout(paymentPollTimer);
     paymentPollTimer = null;
   }
 
+  // Coming back to this tab (e.g. from the PayFast page) checks straight away
+  // instead of waiting for the next scheduled check.
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden && paymentPolling && paymentPollTick) {
+      if (paymentPollTimer) clearTimeout(paymentPollTimer);
+      paymentPollTick();
+    }
+  });
+
   // PayFast confirms a payment by messaging our server a few seconds after
   // the team pays, so a team coming back from PayFast may briefly still show
-  // as pending - check every few seconds (for a couple of minutes) and move
-  // on to the dashboard the moment it's confirmed.
+  // as pending. Until then this asks ONE small question - "is this team's
+  // payment complete yet?" - and only when the answer changes does it reload
+  // the whole page. (It used to reload and redraw everything every 3 seconds,
+  // six requests each time, which on a phone made the page crawl, jump back
+  // to the top and sometimes pile requests up behind each other.) The next
+  // check is only scheduled once the last one has finished, so they can never
+  // stack up, and nothing is asked while the tab is in the background.
   function ensurePaymentPolling() {
-    if (paymentPollTimer) return;
+    if (paymentPolling) return;
+    paymentPolling = true;
     let checks = 0;
-    paymentPollTimer = setInterval(async () => {
+    const schedule = () => {
+      if (!paymentPolling) return;
+      paymentPollTimer = setTimeout(tick, 2500);
+    };
+    const tick = async () => {
+      if (!paymentPolling) return;
+      if (document.hidden) return schedule(); // wait until the tab is visible again
       checks += 1;
-      if (checks > 40) {
+      if (checks > 80) {
         stopPaymentPolling();
         return;
       }
       try {
-        await refresh();
+        const latest = latestPayment(await dbList("team_payment_status", { team_id: `eq.${ctx.team.id}` }));
+        if (!paymentPolling) return;
+        const was = ctx.payment ? ctx.payment.status : null;
+        if ((latest ? latest.status : null) !== was) {
+          stopPaymentPolling();
+          await refresh();
+          return;
+        }
       } catch (err) {
         console.error(err);
       }
-    }, 3000);
+      schedule();
+    };
+    paymentPollTick = tick;
+    schedule();
   }
 
   // Today's date in South Africa, to show "payment closed" without a round

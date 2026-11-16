@@ -487,12 +487,53 @@
 
   // ---------- League detail ----------
 
+  // Everything a league page needs, fetched in a single round of parallel
+  // requests (the old version asked for the league, then rules, then payments
+  // one after another - each wait is a full trip to the database, which adds
+  // up on a phone). Rules/payments are only kept when the league has them.
+  async function loadLeagueDetailData(leagueId, tab) {
+    const activating = tab === "activate"; // the pay screen needs nothing but the league itself
+    const [league, teams, fixtures, results, activationRows, acceptanceRows, paymentRows] = await Promise.all([
+      dbGet("leagues", leagueId),
+      activating ? [] : dbList("teams", { league_id: `eq.${leagueId}` }),
+      activating ? [] : dbList("fixtures", { league_id: `eq.${leagueId}` }),
+      // Scoped to this league via Supabase's join-filter syntax, instead of
+      // fetching every league's results and filtering client side.
+      activating ? [] : dbList("results", { select: "*,fixtures!inner(id)", "fixtures.league_id": `eq.${leagueId}` }),
+      // Has an organiser's league paid its R50? (A league with no row here
+      // never needed to - every league from before activation existed.)
+      dbList("league_activation_status", { league_id: `eq.${leagueId}` }),
+      activating ? [] : dbList("rules_acceptances", { league_id: `eq.${leagueId}` }),
+      activating ? [] : dbList("team_payment_status", { league_id: `eq.${leagueId}` })
+    ]);
+    return {
+      league,
+      teams,
+      fixtures,
+      results,
+      activation: activationRows[0] || null,
+      // Only leagues that actually have rules / an entry fee show these.
+      acceptances: league && league.rules ? acceptanceRows : [],
+      payments: league && EntryFee.leagueHasFee(league) ? paymentRows : []
+    };
+  }
+
   async function renderLeagueDetail(leagueId, tab) {
     // An organiser may only open leagues they administer (the Owner opens any).
-    if (me && me.role === "organiser" && !confirmedLeagues.has(leagueId)) {
-      const mine = await dbList("league_admins", { league_id: `eq.${leagueId}`, organiser_id: `eq.${me.id}` });
+    // Every request from a phone costs a round trip, so the access check runs
+    // at the same time as the data below instead of before it - nothing is
+    // shown unless the check passes.
+    const accessCheck =
+      me && me.role === "organiser" && !confirmedLeagues.has(leagueId)
+        ? dbList("league_admins", { league_id: `eq.${leagueId}`, organiser_id: `eq.${me.id}` })
+        : null;
+    const dataLoad = loadLeagueDetailData(leagueId, tab);
+    dataLoad.catch(() => {}); // an error is reported where the data is awaited below
+    if (accessCheck) {
+      const mine = await accessCheck;
       if (!mine.length) {
         app.innerHTML = "";
+        app.classList.remove("with-league-nav");
         app.appendChild(
           el("div", { class: "card" }, [
             el("h3", {}, "You don't have access to this league"),
@@ -504,29 +545,10 @@
       }
       confirmedLeagues.add(leagueId);
     }
-    const [league, teams, fixtures, results, activationRows] = await Promise.all([
-      dbGet("leagues", leagueId),
-      dbList("teams", { league_id: `eq.${leagueId}` }),
-      dbList("fixtures", { league_id: `eq.${leagueId}` }),
-      // Scoped to this league via Supabase's join-filter syntax, instead of
-      // fetching every league's results and filtering client side - this
-      // ran on every tab switch/action in admin, including ones that don't
-      // even touch results (e.g. expanding a team row), so an unscoped
-      // fetch here was wasted on nearly every click.
-      dbList("results", { select: "*,fixtures!inner(id)", "fixtures.league_id": `eq.${leagueId}` }),
-      // Has an organiser's league paid its R50? (A league with no row here
-      // never needed to - every league from before activation existed.)
-      dbList("league_activation_status", { league_id: `eq.${leagueId}` })
-    ]);
-    const activation = activationRows[0] || null;
-    // Only leagues that actually have rules have acceptances to look up - a
-    // league without rules (every league created before rules existed) costs
-    // no extra request here and never touches the rules_acceptances table.
-    const acceptances = league && league.rules ? await dbList("rules_acceptances", { league_id: `eq.${leagueId}` }) : [];
-    // Likewise only a league with an entry fee has payments to show.
-    const payments = league && EntryFee.leagueHasFee(league) ? await dbList("team_payment_status", { league_id: `eq.${leagueId}` }) : [];
+    const { league, teams, fixtures, results, activation, acceptances, payments } = await dataLoad;
 
     app.innerHTML = "";
+    app.classList.remove("with-league-nav"); // re-added below by the pages that show the bar
     if (!league) {
       app.appendChild(el("div", { class: "card" }, "League not found."));
       return;
