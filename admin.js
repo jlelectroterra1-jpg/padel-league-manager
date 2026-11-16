@@ -139,6 +139,30 @@
     return { draft: "neutral", active: "blue", playoffs: "amber", completed: "green", archived: "neutral" }[status] || "neutral";
   }
 
+  // The price teams will actually pay, shown big wherever an organiser sets or
+  // reviews the fee - so what they tell their players is the real price
+  // (their fee + the platform's 20%), not just their own number.
+  function priceCallout() {
+    const amount = el("div", { class: "price-callout-amount" }, "");
+    const detail = el("div", { class: "price-callout-detail" }, "");
+    const node = el("div", { class: "price-callout", style: "display:none" }, [
+      el("div", { class: "price-callout-label" }, "Each team will pay"),
+      amount,
+      detail
+    ]);
+    function show(feeCents) {
+      if (!feeCents) {
+        node.style.display = "none";
+        return;
+      }
+      const price = EntryFee.priceFor(feeCents);
+      amount.textContent = EntryFee.formatRand(price.total);
+      detail.textContent = `That's your ${EntryFee.formatRand(price.fee)} + ${EntryFee.formatRand(price.platform)} platform fee. You receive ${EntryFee.formatRand(price.fee)} per team. Tell your players the price is ${EntryFee.formatRand(price.total)}, not ${EntryFee.formatRand(price.fee)}.`;
+      node.style.display = "block";
+    }
+    return { node, show };
+  }
+
   // The real database only lets create_league() make a league (it also
   // marks an organiser's league as needing the R50); local test mode has no
   // such function, so it just stores the league.
@@ -164,16 +188,8 @@
     // league; the platform's 20% is added by the payment function, never here.
     const entryFee = el("input", { class: "input", inputmode: "decimal", placeholder: "e.g. 150 - leave empty for a free league" });
     const deadline = el("input", { class: "input", type: "date" });
-    const feePreview = el("p", { class: "muted small fee-preview" }, "");
-    entryFee.addEventListener("input", () => {
-      const cents = EntryFee.parseRand(entryFee.value);
-      if (!cents) {
-        feePreview.textContent = "";
-        return;
-      }
-      const price = EntryFee.priceFor(cents);
-      feePreview.textContent = `Each team will pay ${EntryFee.formatRand(price.total)} (your ${EntryFee.formatRand(price.fee)} + ${EntryFee.formatRand(price.platform)} platform fee). You receive ${EntryFee.formatRand(price.fee)} per team.`;
-    });
+    const feePreview = priceCallout();
+    entryFee.addEventListener("input", () => feePreview.show(EntryFee.parseRand(entryFee.value)));
     const error = el("p", { class: "form-error", hidden: true });
     // Every new league gets rules (the locked ones can't be removed), which
     // teams must accept before using their link - see league-rules.js.
@@ -196,8 +212,8 @@
         { class: "muted small" },
         "Optional. Teams pay once per team (covering both partners) on their team link, after accepting the rules. They see one price: your fee plus a 20% platform fee. Two rules about the fee and refunds are added to your league rules automatically. Leave the fee empty for a free league. The fee can't be changed once the first team accepts the rules."
       ),
-      el("div", { class: "field-row" }, [field("Entry fee per team (R)", entryFee), field("Payment cut-off date", deadline)]),
-      feePreview,
+      el("div", { class: "field-row" }, [field("Your fee per team (R) - what you receive", entryFee), field("Payment cut-off date", deadline)]),
+      feePreview.node,
       el("h3", { class: "rules-heading" }, "League rules"),
       rulesIntro(),
       rules.node,
@@ -865,7 +881,7 @@
           ? el(
               "p",
               { class: "muted small" },
-              `Entry fee ${EntryFee.formatRand(league.entry_fee_cents)} per team · ${paidCount} of ${teams.length} paid${league.payment_deadline ? ` · pay by ${formatDate(league.payment_deadline)}` : ""}`
+              `Teams pay ${EntryFee.formatRand(EntryFee.priceFor(league.entry_fee_cents).total)} each (your fee ${EntryFee.formatRand(league.entry_fee_cents)}) · ${paidCount} of ${teams.length} paid${league.payment_deadline ? ` · pay by ${formatDate(league.payment_deadline)}` : ""}`
             )
           : null,
         el("div", { class: "stack" }, rows)
@@ -1470,12 +1486,8 @@
     const error = el("p", { class: "form-error", hidden: true });
     const saved = el("span", { class: "save-confirm", hidden: true }, "Saved");
     const saveBtn = el("button", { class: "btn btn-primary", type: "button" }, "Save");
-    const preview = el("p", { class: "muted small fee-preview" }, "");
-
-    function showPreview() {
-      const price = EntryFee.priceFor(league.entry_fee_cents);
-      preview.textContent = `Teams pay ${EntryFee.formatRand(price.total)} each (your ${EntryFee.formatRand(price.fee)} + ${EntryFee.formatRand(price.platform)} platform fee).`;
-    }
+    const preview = priceCallout();
+    const showPreview = () => preview.show(league.entry_fee_cents);
     showPreview();
 
     saveBtn.addEventListener("click", async () => {
@@ -1533,8 +1545,8 @@
           ? "The fee is locked now that teams have accepted the rules or started paying. You can still extend the payment cut-off date."
           : "You can change the fee until the first team accepts the rules."
       ),
-      el("div", { class: "field-row" }, [field("Entry fee per team (R)", fee), field("Payment cut-off date", deadline)]),
-      preview,
+      el("div", { class: "field-row" }, [field("Your fee per team (R) - what you receive", fee), field("Payment cut-off date", deadline)]),
+      preview.node,
       error,
       el("div", { class: "field-row", style: "align-items:center;" }, [saveBtn, saved])
     ]);

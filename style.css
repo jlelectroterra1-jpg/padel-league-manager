@@ -519,7 +519,10 @@ body{
 .pay-gate .btn{ margin-top:6px; }
 
 /* organiser entry-fee fields and the Owner's payout ledger */
-.fee-preview{ margin:4px 0 0; }
+.price-callout{ margin:12px 0 4px; padding:14px 16px; border:1px solid var(--brand); border-radius:var(--radius-sm); background:rgba(45,212,191,0.08); }
+.price-callout-label{ color:var(--muted); font-size:12px; text-transform:uppercase; letter-spacing:0.04em; }
+.price-callout-amount{ font-family:var(--font-display); font-weight:800; font-size:36px; line-height:1.1; color:var(--brand); margin:4px 0 6px; }
+.price-callout-detail{ font-size:14px; }
 .ledger-grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(120px,1fr)); gap:8px; margin:10px 0; }
 .ledger-owed{ font-family:var(--font-display); font-weight:800; font-size:20px; }
 
