@@ -9,6 +9,35 @@
 
   const app = document.getElementById("app");
   const expandedTeams = new Set();
+
+  // The signed-in person's `organisers` row (cached), and the leagues this
+  // page load has already confirmed they administer. The database enforces
+  // all of this too - these checks are the friendly layer on top.
+  let me = null;
+  const confirmedLeagues = new Set();
+
+  // The admin console needs a login: no session or a non-active account goes
+  // to the login page. Local (no Supabase) test mode has no accounts, so it
+  // skips this and acts as the Owner.
+  async function requireSignedIn() {
+    if (!window.DB.hasSupabase()) {
+      me = { role: "owner", status: "active", local: true };
+      return me;
+    }
+    const session = window.Auth ? await window.Auth.getValidSession() : null;
+    if (!session) {
+      location.href = "login.html";
+      return null;
+    }
+    if (me && me.id === session.user.id) return me;
+    const row = await dbGet("organisers", session.user.id);
+    if (!row || row.status !== "active") {
+      location.href = "login.html";
+      return null;
+    }
+    me = row;
+    return me;
+  }
   const editingTeams = new Set();
 
   function parseHash() {
@@ -41,10 +70,6 @@
     const scrollY = window.scrollY;
     const route = parseHash();
     stopActivatePolling();
-    // A signed-in organiser's token is sent with every request (db.js picks it
-    // up when auth.js is loaded) - make sure it hasn't expired. With no
-    // session this does nothing, and requests use the public key as always.
-    if (window.Auth) await window.Auth.getValidSession();
     // Only show a loading placeholder on the very first render (#app is
     // still empty). Every later call to render() - triggered by clicking a
     // tab, expanding a row, saving a score, confirming a result, anything -
@@ -61,7 +86,14 @@
       app.appendChild(el("p", { class: "loading" }, "Loading..."));
     }
     try {
+      if (!(await requireSignedIn())) return; // sent to the login page
       if (route.view === "leagues") {
+        // An organiser's list of leagues is My Leagues (their own, nothing
+        // else); only the Owner sees the full list here.
+        if (me.role === "organiser") {
+          location.href = "my-leagues.html";
+          return;
+        }
         await renderLeaguesView();
       } else if (route.view === "new") {
         await renderNewLeagueView();
@@ -450,6 +482,22 @@
   // ---------- League detail ----------
 
   async function renderLeagueDetail(leagueId, tab) {
+    // An organiser may only open leagues they administer (the Owner opens any).
+    if (me && me.role === "organiser" && !confirmedLeagues.has(leagueId)) {
+      const mine = await dbList("league_admins", { league_id: `eq.${leagueId}`, organiser_id: `eq.${me.id}` });
+      if (!mine.length) {
+        app.innerHTML = "";
+        app.appendChild(
+          el("div", { class: "card" }, [
+            el("h3", {}, "You don't have access to this league"),
+            el("p", { class: "muted" }, "You can only open leagues you organise."),
+            el("a", { class: "btn btn-primary", href: "my-leagues.html" }, "Go to my leagues")
+          ])
+        );
+        return;
+      }
+      confirmedLeagues.add(leagueId);
+    }
     const [league, teams, fixtures, results, activationRows] = await Promise.all([
       dbGet("leagues", leagueId),
       dbList("teams", { league_id: `eq.${leagueId}` }),
@@ -483,7 +531,7 @@
 
     app.appendChild(
       el("div", { class: "detail-header" }, [
-        el("a", { class: "back-link", href: "#/leagues" }, "← All leagues"),
+        el("a", { class: "back-link", href: "#/leagues" }, me && me.role === "owner" ? "← All leagues" : "← My leagues"),
         el("h2", {}, league.name),
         badge(league.status, statusKind(league.status))
       ])

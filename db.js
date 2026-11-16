@@ -33,6 +33,19 @@
     };
   }
 
+  // A signed-in user's token lasts about an hour. Refresh it (a no-op when it
+  // is still valid, and when there is no signed-in user at all) before each
+  // request, so an admin page left open for a while doesn't start failing.
+  async function refreshAuth() {
+    if (window.Auth && window.Auth.getValidSession) {
+      try {
+        await window.Auth.getValidSession();
+      } catch (e) {
+        /* fall through: the request will simply be unauthenticated */
+      }
+    }
+  }
+
   function uuid() {
     return crypto.randomUUID();
   }
@@ -66,6 +79,7 @@
 
   async function dbList(table, filter) {
     if (hasSupabase()) {
+      await refreshAuth();
       const params = new URLSearchParams({ select: "*", order: "created_at.asc" });
       if (filter) Object.entries(filter).forEach(([k, v]) => params.set(k, v));
       const res = await fetch(`${window.LEAGUE_CONFIG.supabaseUrl}/rest/v1/${table}?${params}`, {
@@ -91,6 +105,7 @@
   async function dbInsert(table, row) {
     const withId = { id: uuid(), created_at: new Date().toISOString(), ...row };
     if (hasSupabase()) {
+      await refreshAuth();
       const res = await fetch(`${window.LEAGUE_CONFIG.supabaseUrl}/rest/v1/${table}`, {
         method: "POST",
         headers: { ...headers(), Prefer: "return=representation" },
@@ -108,6 +123,7 @@
 
   async function dbUpdate(table, id, patch) {
     if (hasSupabase()) {
+      await refreshAuth();
       const res = await fetch(`${window.LEAGUE_CONFIG.supabaseUrl}/rest/v1/${table}?id=eq.${id}`, {
         method: "PATCH",
         headers: { ...headers(), Prefer: "return=representation" },
@@ -127,6 +143,7 @@
 
   async function dbDelete(table, id) {
     if (hasSupabase()) {
+      await refreshAuth();
       const res = await fetch(`${window.LEAGUE_CONFIG.supabaseUrl}/rest/v1/${table}?id=eq.${id}`, {
         method: "DELETE",
         headers: headers()
@@ -142,6 +159,7 @@
   // status) so callers can show it, e.g. "League name is required."
   async function dbRpc(fn, args) {
     if (!hasSupabase()) throw new Error("This needs a configured Supabase project.");
+    await refreshAuth();
     const res = await fetch(`${window.LEAGUE_CONFIG.supabaseUrl}/rest/v1/rpc/${fn}`, {
       method: "POST",
       headers: headers(),
