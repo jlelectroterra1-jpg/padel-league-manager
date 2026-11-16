@@ -834,7 +834,13 @@
     return el(
       "div",
       { class: "stats-strip" },
-      stats.map(([label, value]) => el("div", { class: "stat-tile" }, [el("div", { class: "stat-value" }, String(value)), el("div", { class: "stat-label" }, label)]))
+      stats.map(([label, value]) =>
+        el("div", { class: "stat-tile" }, [
+          // words ("Complete", "Week 3") are set smaller than numbers so they fit on one line
+          el("div", { class: `stat-value${typeof value === "number" ? "" : " stat-value-text"}` }, String(value)),
+          el("div", { class: "stat-label" }, label)
+        ])
+      )
     );
   }
 

@@ -622,14 +622,15 @@ details.form-section[open] > summary{ margin-bottom:14px; }
 .stat-tile{
     position:relative; overflow:hidden;
     background:var(--panel); border:1px solid var(--line-soft); border-radius:var(--radius-sm);
-    padding:12px 8px 10px; text-align:center; box-shadow:var(--shadow-sm);
+    padding:12px 4px 10px; text-align:center; box-shadow:var(--shadow-sm);
 }
 /* a small coloured accent along the top of each statistic */
 .stat-tile::before{ content:""; position:absolute; left:0; right:0; top:0; height:3px; background:var(--tile-accent, var(--blue)); }
 .stat-tile:nth-child(4n+2){ --tile-accent:var(--green); }
 .stat-tile:nth-child(4n+3){ --tile-accent:var(--amber); }
 .stat-tile:nth-child(4n+4){ --tile-accent:#8B5CF6; }
-.stat-value{ font-family:var(--font-display); font-weight:800; font-size:18px; overflow-wrap:break-word; }
+.stat-value{ font-family:var(--font-display); font-weight:800; font-size:18px; }
+.stat-value.stat-value-text{ font-size:12.5px; line-height:24px; white-space:nowrap; }
 .stat-label{ color:var(--muted); font-size:10.5px; text-transform:uppercase; letter-spacing:0.03em; margin-top:2px; }
 
 /* standings table - Pos/Team stay pinned while the stat columns scroll
