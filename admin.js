@@ -559,16 +559,22 @@
       settings: "Settings"
     };
 
+    // Wide screens: a row of tabs. Phones: one dropdown showing the current
+    // section (a long scrolling row hid the other sections; a dropdown with a
+    // chevron says "there are more" and takes a single line).
+    const sectionPicker = el("select", { class: "input tab-picker-select", "aria-label": "League section" },
+      Object.keys(tabLabels).map((t) => el("option", { value: t }, tabLabels[t]))
+    );
+    sectionPicker.value = tab;
+    sectionPicker.addEventListener("change", () => navigate(`#/league/${leagueId}/${sectionPicker.value}`));
     app.appendChild(
-      el(
-        "div",
-        { class: "tabs-inline" },
+      el("div", { class: "tabs-inline has-picker" },
         Object.keys(tabLabels).map((t) =>
           el("a", { class: `tab-inline ${t === tab ? "active" : ""}`, href: `#/league/${leagueId}/${t}` }, tabLabels[t])
         )
       )
     );
-    window.Render.revealActiveTab(app.querySelector(".tabs-inline"));
+    app.appendChild(el("label", { class: "tab-picker" }, [el("span", { class: "tab-picker-label" }, "Section"), sectionPicker]));
 
     if (tab === "teams") app.appendChild(renderTeamsTab(league, teams, fixtures, results, acceptances, payments));
     else if (tab === "fixtures") app.appendChild(renderFixturesTab(league, teams, fixtures, results));
