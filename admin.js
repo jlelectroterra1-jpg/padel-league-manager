@@ -83,7 +83,7 @@
     // skip it and leave the current view on screen until the fresh one is
     // ready to replace it in one step.
     if (!app.hasChildNodes()) {
-      app.appendChild(el("p", { class: "loading" }, "Loading..."));
+      app.appendChild(window.Render.skeleton());
     }
     try {
       if (!(await requireSignedIn())) return; // sent to the login page
@@ -564,6 +564,7 @@
         )
       )
     );
+    window.Render.revealActiveTab(app.querySelector(".tabs-inline"));
 
     if (tab === "teams") app.appendChild(renderTeamsTab(league, teams, fixtures, results, acceptances, payments));
     else if (tab === "fixtures") app.appendChild(renderFixturesTab(league, teams, fixtures, results));

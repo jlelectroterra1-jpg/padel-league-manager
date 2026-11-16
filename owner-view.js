@@ -24,7 +24,7 @@
 
   async function render() {
     if (!app.hasChildNodes()) {
-      app.appendChild(el("p", { class: "loading" }, "Loading..."));
+      app.appendChild(window.Render.skeleton());
     }
     if (!window.DB.hasSupabase()) {
       app.innerHTML = "";
@@ -43,12 +43,8 @@
     const tab = parseTab();
     app.innerHTML = "";
 
-    app.appendChild(
-      el("div", { class: "detail-header" }, [
-        el("h2", {}, "Owner dashboard"),
-        el("button", { class: "btn btn-ghost small", type: "button", onclick: () => logout() }, "Log out")
-      ])
-    );
+    // (Log out lives in the account menu in the top bar.)
+    app.appendChild(el("div", { class: "detail-header" }, [el("h2", {}, "Owner dashboard")]));
     app.appendChild(
       el("div", { class: "tabs-inline" }, [
         el("a", { class: `tab-inline ${tab === "dashboard" ? "active" : ""}`, href: "#/dashboard" }, "Dashboard"),
@@ -56,6 +52,7 @@
         el("a", { class: `tab-inline ${tab === "payments-lab" ? "active" : ""}`, href: "#/payments-lab" }, "Payments")
       ])
     );
+    window.Render.revealActiveTab(app.querySelector(".tabs-inline"));
 
     if (tab === "scorer-lab") {
       const container = el("div", {});

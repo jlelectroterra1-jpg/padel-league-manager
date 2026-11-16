@@ -127,6 +127,15 @@
     );
   }
 
+  // A tab bar that scrolls sideways on a phone: slide the current tab to the
+  // middle so you can see where you are. (Scrolls only the bar, never the page.)
+  function revealActiveTab(tabs) {
+    if (!tabs) return;
+    const active = tabs.querySelector(".active");
+    if (!active) return;
+    tabs.scrollLeft = Math.max(0, active.offsetLeft - (tabs.clientWidth - active.offsetWidth) / 2);
+  }
+
   // Small line icons (24x24 grid, drawn with the current text colour), so the
   // interface can use pictures without any image files or libraries.
   const ICONS = {
@@ -179,5 +188,5 @@
     form.submit();
   }
 
-  window.Render = { el, formatDate, badge, qs, genAccessCode, formatSets, scoreGrid, scoreInput, wireAutoAdvance, rulesList, postForm, icon, skeleton, emptyState };
+  window.Render = { el, formatDate, badge, qs, genAccessCode, formatSets, scoreGrid, scoreInput, wireAutoAdvance, rulesList, postForm, icon, skeleton, emptyState, revealActiveTab };
 })();

@@ -14,7 +14,7 @@
 
   async function render() {
     if (!app.hasChildNodes()) {
-      app.appendChild(el("p", { class: "loading" }, "Loading..."));
+      app.appendChild(window.Render.skeleton());
     }
     if (!window.DB.hasSupabase()) {
       app.innerHTML = "";
@@ -44,12 +44,8 @@
     const unpaid = new Set(activations.filter((a) => !a.paid).map((a) => a.league_id));
     app.innerHTML = "";
 
-    app.appendChild(
-      el("div", { class: "detail-header" }, [
-        el("h2", {}, `Welcome, ${organiser.name}`),
-        el("button", { class: "btn btn-ghost small", type: "button", onclick: () => logout() }, "Log out")
-      ])
-    );
+    // (Log out lives in the account menu in the top bar.)
+    app.appendChild(el("div", { class: "detail-header" }, [el("h2", {}, `Welcome, ${organiser.name}`)]));
 
     app.appendChild(
       el("div", { class: "card" }, [
@@ -59,7 +55,11 @@
         ]),
         leagues.length
           ? el("div", { class: "stack" }, leagues.map((l) => leagueCard(l, unpaid.has(l.id))))
-          : el("p", { class: "empty-state" }, "You haven't created a league yet. Create your first league - each league costs R50 to activate.")
+          : window.Render.emptyState(
+              "trophy",
+              "You haven't created a league yet. Each league costs R50 to activate.",
+              el("a", { class: "btn btn-primary", href: "admin.html#/new" }, "Create your first league")
+            )
       ])
     );
   }
@@ -84,7 +84,7 @@
           league.start_date ? ` · starts ${formatDate(league.start_date)}` : ""
         ].join(""))
       ]),
-      needsActivation ? badge("not activated - pay R50", "amber") : badge(league.status, statusKind(league.status))
+      needsActivation ? badge("not activated", "amber") : badge(league.status, statusKind(league.status))
     ]);
   }
 })();
