@@ -15,7 +15,9 @@
     --danger:#ef4444;
     --radius:14px;
     --radius-sm:10px;
-    --shadow:0 20px 50px rgba(0,0,0,0.38), 0 2px 8px rgba(0,0,0,0.28);
+    --shadow:0 12px 32px rgba(0,0,0,0.30), 0 1px 0 rgba(255,255,255,0.04) inset;
+    --ring:0 0 0 3px rgba(45,212,191,0.35);
+    --ease:cubic-bezier(.2,.7,.2,1);
     --font-display:"Sora","Inter",system-ui,sans-serif;
     --font-body:"Inter",system-ui,-apple-system,sans-serif;
 }
@@ -34,6 +36,14 @@ body{
     background-attachment:fixed;
     color:var(--text);
     -webkit-font-smoothing:antialiased;
+    line-height:1.5;
+}
+
+/* keyboard users and screen-reader users get a clear focus ring; people who
+   asked their device for less motion get none */
+:focus-visible{ outline:none; box-shadow:var(--ring); border-radius:inherit; }
+@media (prefers-reduced-motion: reduce){
+    *,*::before,*::after{ animation-duration:0.01ms !important; transition-duration:0.01ms !important; scroll-behavior:auto !important; }
 }
 
 .app-header{
@@ -121,12 +131,17 @@ body{
     font-family:var(--font-body);
     white-space:nowrap;
 }
+.btn{ transition:transform .12s var(--ease), filter .12s var(--ease), border-color .12s var(--ease); }
+.btn:hover:not(:disabled){ border-color:rgba(45,212,191,0.5); }
+.btn:active:not(:disabled){ transform:scale(0.98); }
+.btn.block{ width:100%; display:flex; align-items:center; justify-content:center; gap:8px; }
 .btn:disabled{ opacity:0.4; cursor:not-allowed; }
 .btn-primary{
     background:linear-gradient(135deg,var(--brand),var(--brand-strong));
     border-color:transparent;
     color:#04231f;
 }
+.btn-primary:hover:not(:disabled){ filter:brightness(1.07); border-color:transparent; }
 .btn-danger{ border-color:rgba(239,68,68,0.4); color:#ffb4b4; background:rgba(239,68,68,0.08); }
 .btn-ghost{ background:transparent; }
 /* still comfortably tappable (~38px) despite the "small" label - these sit
@@ -139,6 +154,22 @@ body{
    secondary, less-reached-for action rather than competing with it. */
 .btn-subtle{ background:transparent; border-color:transparent; color:var(--faint); padding:8px 10px; min-height:38px; font-size:12.5px; }
 .btn-subtle:hover{ color:var(--muted); }
+
+/* icons, loading placeholders, empty states */
+.icon{ display:inline-flex; line-height:0; vertical-align:middle; }
+.skeleton-page{ display:flex; flex-direction:column; gap:14px; padding-top:6px; }
+.skeleton{
+    border-radius:var(--radius);
+    background:linear-gradient(90deg,rgba(255,255,255,0.04),rgba(255,255,255,0.09),rgba(255,255,255,0.04));
+    background-size:200% 100%; animation:shimmer 1.4s linear infinite;
+}
+.skeleton-hero{ height:170px; }
+.skeleton-line{ height:16px; border-radius:8px; }
+.skeleton-line.short{ width:60%; }
+.skeleton-block{ height:120px; }
+@keyframes shimmer{ from{ background-position:200% 0; } to{ background-position:-200% 0; } }
+.empty-card{ display:flex; flex-direction:column; align-items:center; gap:8px; text-align:center; padding:22px 12px; color:var(--faint); }
+.empty-card p{ margin:0; font-size:14px; max-width:34ch; }
 
 /* leagues list */
 .league-row{
@@ -319,7 +350,8 @@ body{
 .standings-me{ background:rgba(45,212,191,0.08); border-radius:8px; }
 
 /* team dashboard summary */
-.summary-grid{ display:grid; grid-template-columns:repeat(auto-fit, minmax(90px, 1fr)); gap:8px; margin-top:14px; }
+.summary-grid{ display:grid; grid-template-columns:repeat(4, minmax(0, 1fr)); gap:8px; margin-top:14px; }
+.summary-grid .stat-tile{ padding:10px 4px; }
 .next-match{
     margin-top:14px; padding:12px; border-radius:var(--radius-sm); border:1px dashed rgba(45,212,191,0.4);
     background:rgba(45,212,191,0.06); text-align:center;
@@ -600,6 +632,98 @@ body{
 .avail-hint{ margin-top:10px; }
 .avail-summary{ margin-top:8px; }
 .next-match .avail-summary .avail-chips{ justify-content:center; }
+
+/* ---------- player's team page ---------- */
+
+/* Section bar: fixed to the bottom of a phone like a native app (a thumb's
+   reach), and a centred pill bar at the top of wider screens. */
+.team-nav{
+    position:fixed; left:0; right:0; bottom:0; z-index:60;
+    display:flex; gap:2px;
+    padding:6px 8px calc(6px + env(safe-area-inset-bottom, 0px));
+    background:rgba(10,15,29,0.94); backdrop-filter:blur(14px);
+    border-top:1px solid rgba(255,255,255,0.08);
+}
+.team-nav-item{
+    position:relative; flex:1; min-width:0;
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px;
+    min-height:54px; padding:6px 2px; border:0; border-radius:12px; background:none;
+    color:var(--faint); font-family:var(--font-body); font-weight:700; font-size:11px; cursor:pointer;
+    transition:color .12s var(--ease), background .12s var(--ease);
+}
+.team-nav-item:hover{ color:var(--muted); }
+.team-nav-item.active{ color:var(--brand); }
+.team-nav-item.active::before{
+    content:""; position:absolute; top:-6px; left:28%; right:28%; height:3px;
+    border-radius:0 0 4px 4px; background:var(--brand);
+}
+.team-nav-label{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:100%; }
+.nav-dot{
+    position:absolute; top:6px; left:calc(50% + 7px); width:10px; height:10px; border-radius:50%;
+    background:var(--amber); border:2px solid #0a0f1d;
+}
+#app.with-nav{ padding-bottom:calc(92px + env(safe-area-inset-bottom, 0px)); }
+.team-section{ animation:sectionIn .25s var(--ease); }
+@keyframes sectionIn{ from{ opacity:0; transform:translateY(6px); } to{ opacity:1; transform:none; } }
+
+@media (min-width: 720px){
+    .team-nav{
+        position:sticky; top:10px; bottom:auto; left:auto; right:auto;
+        width:fit-content; max-width:100%; margin:0 auto 18px; padding:6px;
+        border:1px solid var(--line); border-radius:999px; background:rgba(21,30,47,0.92);
+        box-shadow:var(--shadow);
+    }
+    .team-nav-item{ flex:none; flex-direction:row; gap:8px; min-height:44px; padding:8px 18px; border-radius:999px; font-size:13.5px; }
+    .team-nav-item.active{ background:rgba(45,212,191,0.12); }
+    .team-nav-item.active::before{ display:none; }
+    .nav-dot{ position:static; margin-left:2px; }
+    #app.with-nav{ padding-bottom:48px; }
+}
+
+/* hero: whose page this is, and where they stand */
+.team-hero{ padding:22px 20px; }
+.hero-eyebrow{ font-size:11px; font-weight:800; letter-spacing:0.06em; text-transform:uppercase; color:var(--muted); }
+.hero-rank{ display:flex; align-items:baseline; justify-content:center; gap:8px; margin:10px 0 2px; }
+.rank-badge{ font-family:var(--font-display); font-weight:800; font-size:44px; line-height:1; color:var(--brand); }
+.progress-wrap{ margin-top:16px; text-align:left; }
+.progress{ height:8px; border-radius:999px; background:rgba(255,255,255,0.08); overflow:hidden; margin-top:6px; }
+.progress > span{ display:block; height:100%; border-radius:999px; background:linear-gradient(90deg,var(--brand),var(--blue)); transition:width .4s var(--ease); }
+
+/* the thing that needs doing next */
+.next-card{ border-color:rgba(45,212,191,0.45); background:linear-gradient(180deg,rgba(45,212,191,0.09),rgba(16,23,38,0.98)); }
+.next-card .next-eyebrow{ font-size:11px; font-weight:800; letter-spacing:0.06em; text-transform:uppercase; color:var(--brand); }
+.next-card .next-opp{ font-family:var(--font-display); font-weight:800; font-size:22px; line-height:1.2; margin:6px 0 2px; overflow-wrap:break-word; }
+.next-card .btn.block{ margin-top:14px; }
+.next-status{ margin:12px 0 0; padding:10px 12px; border-radius:var(--radius-sm); background:rgba(255,255,255,0.05); font-size:14px; }
+.attention-card{ border-color:rgba(245,158,11,0.5); background:linear-gradient(180deg,rgba(245,158,11,0.10),rgba(16,23,38,0.98)); }
+.attention-card h3{ display:flex; align-items:center; gap:8px; color:#ffd28a; }
+
+/* grouped lists on the Matches section */
+.group-title{ display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.group-count{ font-size:12px; font-weight:800; color:var(--muted); background:rgba(255,255,255,0.07); border-radius:999px; padding:2px 10px; }
+details.card > summary{ cursor:pointer; font-family:var(--font-display); font-weight:700; font-size:16px; list-style:none; display:flex; align-items:center; justify-content:space-between; }
+details.card > summary::-webkit-details-marker{ display:none; }
+details.card > summary::after{ content:"+"; color:var(--muted); font-size:20px; line-height:1; }
+details.card[open] > summary::after{ content:"\2212"; }
+.info-list{ display:grid; grid-template-columns:auto 1fr; gap:8px 16px; margin:0; font-size:14px; }
+.info-list dt{ color:var(--muted); }
+.info-list dd{ margin:0; font-weight:600; overflow-wrap:break-word; }
+
+/* On a phone the league table shows Pos, Team, P, W, L and PTS - everything
+   fits, so Points is never hidden off to the right. (Sets won/lost still
+   decide ties; the note under the table says so.) */
+.table-note{ margin:12px 0 0; }
+@media (max-width: 520px){
+    .standings-row{ grid-template-columns:28px minmax(0,1fr) 28px 28px 28px 44px; min-width:0; }
+    .standings-row > *:nth-child(6),
+    .standings-row > *:nth-child(7){ display:none; }
+    .standings-row > *:nth-child(1),
+    .standings-row > *:nth-child(2){ position:static; background:none; }
+    .standings-me > *:nth-child(1),
+    .standings-me > *:nth-child(2){ background:none; }
+    .standings-header > *:nth-child(1),
+    .standings-header > *:nth-child(2){ background:none; }
+}
 
 @media (max-width: 640px){
     .opponent-split{ grid-template-columns:1fr; }

@@ -14,6 +14,7 @@
   document.addEventListener("DOMContentLoaded", init);
 
   async function init() {
+    app.appendChild(window.Render.skeleton());
     const codeFromUrl = qs("code");
     if (codeFromUrl) window.State.rememberTeamCode(codeFromUrl.toUpperCase());
     const code = (codeFromUrl || window.State.getRememberedTeamCode() || "").toUpperCase();
@@ -178,6 +179,7 @@
     const { team, league, teamsById, fixtures, results } = ctx;
     const allTeams = Object.values(teamsById);
     app.innerHTML = "";
+    app.classList.remove("with-nav");
 
     // An organiser's league that hasn't paid its R50 isn't open to teams yet.
     if (ctx.activationState === "unpaid") {
@@ -207,68 +209,227 @@
 
     const standings = window.Standings.computeStandings(allTeams, fixtures, results);
     const myRow = standings.find((r) => r.team.id === team.id);
-    const next = window.Fixtures.nextFixtureForTeam(team.id, fixtures, results);
-    const nextOpp = next ? (next.team1_id === team.id ? next.team2_id : next.team1_id) : null;
+    const hasRules = !!(league && league.rules && ctx.accepted);
+    const todo = needsMyConfirmation();
+
+    // The page is split into sections (one at a time, with a bar to switch):
+    // a phone gets a bottom bar like an app, wider screens a bar at the top.
+    const sections = [
+      { id: "home", label: "Home", icon: "home" },
+      { id: "matches", label: "Matches", icon: "calendar", dot: todo.length > 0 },
+      { id: "table", label: "Table", icon: "trophy" },
+      { id: "availability", label: "Availability", icon: "clock" }
+    ];
+    if (hasRules) sections.push({ id: "rules", label: "Rules", icon: "doc" });
+    if (!sections.some((x) => x.id === section)) section = "home";
+
+    const builders = {
+      home: () => homeSection(standings, myRow, todo),
+      matches: () => matchesSection(),
+      table: () => tableSection(standings),
+      availability: () => [availabilityCard()],
+      rules: () => rulesSection()
+    };
+
+    app.classList.add("with-nav");
+    app.appendChild(sectionNav(sections));
+    const body = el("div", { class: "team-section" });
+    builders[section]().forEach((node) => node && body.appendChild(node));
+    app.appendChild(body);
+
+    window.scrollTo(0, scrollY);
+  }
+
+  // ---------- Sections ----------
+
+  // Which section is showing. Remembered for this browser tab only, so
+  // coming back after confirming a score leaves you where you were. Storage
+  // can be blocked (private mode), so every use is guarded.
+  let section = (function () {
+    try {
+      return sessionStorage.getItem("pl_team_section") || "home";
+    } catch (e) {
+      return "home";
+    }
+  })();
+
+  function setSection(id) {
+    section = id;
+    try {
+      sessionStorage.setItem("pl_team_section", id);
+    } catch (e) {
+      /* fine - it just won't be remembered */
+    }
+    render();
+    window.scrollTo(0, 0);
+  }
+
+  function sectionNav(sections) {
+    return el(
+      "nav",
+      { class: "team-nav", "aria-label": "Team page sections" },
+      sections.map((x) =>
+        el(
+          "button",
+          {
+            class: `team-nav-item${section === x.id ? " active" : ""}`,
+            type: "button",
+            "aria-current": section === x.id ? "page" : undefined,
+            onclick: () => setSection(x.id)
+          },
+          [window.Render.icon(x.icon, 22), el("span", { class: "team-nav-label" }, x.label), x.dot ? el("span", { class: "nav-dot", title: "Needs your attention" }) : null]
+        )
+      )
+    );
+  }
+
+  // Fixtures where the opponent has submitted a score and this team still
+  // needs to confirm or dispute it.
+  function needsMyConfirmation() {
+    const { team, fixtures, results } = ctx;
+    return fixtures.filter((f) => {
+      if (f.status === "bye" || (f.team1_id !== team.id && f.team2_id !== team.id)) return false;
+      const r = window.Results.activeResultForFixture(f.id, results);
+      return !!r && r.confirmation_status === "pending" && r.submitted_by_team_id !== team.id;
+    });
+  }
+
+  function myLeagueFixtures() {
+    const { team, fixtures } = ctx;
+    return fixtures.filter((f) => f.stage === "league" && (f.team1_id === team.id || f.team2_id === team.id));
+  }
+
+  function homeSection(standings, myRow, todo) {
+    const { team, league, teamsById, fixtures, results } = ctx;
+    const nodes = [];
 
     if (league && (league.status === "completed" || league.status === "archived")) {
-      const champion = championCard(fixtures, results, teamsById);
-      if (champion) app.appendChild(champion);
+      nodes.push(championCard(fixtures, results, teamsById));
     }
 
-    // Visual hierarchy, strongest to weakest: MY team name > my players >
-    // stats > next match/opponent name > opponent players. The page must
-    // read as "this is MY dashboard" before anything else, so the viewer's
-    // own team gets the strongest identity treatment and the opponent
-    // (inside the next-match callout) is deliberately smaller/lighter -
-    // never allowed to outweigh the team name above it.
-    app.appendChild(
+    // Visual hierarchy, strongest to weakest: MY team name > where I stand >
+    // stats > what to do next > the opponent. The page must read as "this is
+    // MY dashboard" before anything else.
+    const confirmedIds = new Set(results.filter((r) => r.confirmation_status === "confirmed" && !r.superseded).map((r) => r.fixture_id));
+    const playable = myLeagueFixtures().filter((f) => f.status !== "bye");
+    const playedCount = playable.filter((f) => confirmedIds.has(f.id)).length;
+
+    nodes.push(
       el("div", { class: "card team-hero" }, [
-        el("div", { class: "muted small" }, league ? league.name : ""),
+        el("div", { class: "hero-eyebrow" }, league ? league.name : ""),
         el("div", { class: "my-team-label" }, "Your team"),
         el("h2", {}, team.name),
         el("p", { class: "muted" }, `${team.player1} + ${team.player2}`),
         myRow
-          ? el("div", { class: "summary-grid" }, [
-              statTile("Position", ordinal(myRow.position)),
-              statTile("Played", myRow.played),
-              statTile("Won", myRow.won),
-              statTile("Lost", myRow.lost),
-              statTile("Points", myRow.pts)
-            ])
+          ? el("div", { class: "hero-rank" }, [el("div", { class: "rank-badge" }, ordinal(myRow.position)), el("div", { class: "muted small" }, `of ${standings.length} teams`)])
           : null,
-        next
-          ? el("div", { class: "next-match" }, [
-              el("div", { class: "label" }, `Your next match · Week ${next.week}`),
-              el("div", { class: "opp-label" }, "Opponent"),
-              el("div", { class: "opp" }, teamsById[nextOpp] ? teamsById[nextOpp].name : "Unknown"),
-              teamsById[nextOpp] ? el("div", { class: "opp-players" }, `${teamsById[nextOpp].player1} & ${teamsById[nextOpp].player2}`) : null,
-              opponentAvailabilitySummary(teamsById[nextOpp], "next")
+        myRow
+          ? el("div", { class: "summary-grid" }, [statTile("Played", myRow.played), statTile("Won", myRow.won), statTile("Lost", myRow.lost), statTile("Points", myRow.pts)])
+          : null,
+        playable.length
+          ? el("div", { class: "progress-wrap" }, [
+              el("div", { class: "muted small" }, `${playedCount} of ${playable.length} matches played`),
+              el("div", { class: "progress" }, el("span", { style: `width:${Math.round((playedCount / playable.length) * 100)}%` }))
             ])
           : null
       ])
     );
 
-    const availCard = availabilityCard();
-    if (availCard) app.appendChild(availCard);
+    if (todo.length) {
+      nodes.push(
+        el("div", { class: "card attention-card" }, [
+          el("h3", {}, [window.Render.icon("alert", 20), "Needs your attention"]),
+          el("p", { class: "muted small" }, todo.length === 1 ? "Your opponent has submitted a score. Check it, then confirm or dispute it." : "Your opponents have submitted scores. Check them, then confirm or dispute them."),
+          el("div", { class: "stack" }, todo.map((f) => fixtureRow(f)))
+        ])
+      );
+    }
 
-    const confirmedFixtureIds = new Set(
-      results.filter((r) => r.confirmation_status === "confirmed" && !r.superseded).map((r) => r.fixture_id)
-    );
-    const myFixtures = fixtures.filter((f) => f.stage === "league" && (f.team1_id === team.id || f.team2_id === team.id));
+    const next = window.Fixtures.nextFixtureForTeam(team.id, fixtures, results);
+    if (next) {
+      nodes.push(nextMatchCard(next));
+    } else if (playable.length) {
+      nodes.push(el("div", { class: "card" }, window.Render.emptyState("check", "You've played all your league matches. Check the Table for where you finished.")));
+    } else {
+      nodes.push(el("div", { class: "card" }, window.Render.emptyState("calendar", "Your fixtures haven't been set yet - check back once your organiser sets the schedule.")));
+    }
+    return nodes;
+  }
+
+  // The next match, with the one action that matters for it.
+  function nextMatchCard(next) {
+    const { team, teamsById, results } = ctx;
+    const oppId = next.team1_id === team.id ? next.team2_id : next.team1_id;
+    const opp = teamsById[oppId];
+    const isTeam1 = next.team1_id === team.id;
+    const result = window.Results.activeResultForFixture(next.id, results);
+
+    const children = [
+      el("div", { class: "next-eyebrow" }, `Your next match · Week ${next.week}`),
+      el("div", { class: "next-opp" }, opp ? opp.name : "Opponent to be decided"),
+      opp ? el("div", { class: "opp-players" }, `${opp.player1} & ${opp.player2}`) : null,
+      opponentAvailabilitySummary(opp, "next")
+    ];
+
+    if (!result) {
+      const open = openSubmitForms.has(next.id);
+      children.push(
+        el("button", { class: `btn block ${open ? "btn-ghost" : "btn-primary"}`, type: "button", onclick: () => toggleSubmitForm(next.id) }, open ? "Cancel" : "Submit result")
+      );
+      if (open) children.push(submitForm(next, isTeam1, opp));
+    } else if (result.confirmation_status === "disputed") {
+      children.push(el("div", { class: "next-status" }, "This result is disputed. Your organiser will decide it."));
+    } else if (result.submitted_by_team_id === team.id) {
+      const sw = window.Standings.setsWon(result);
+      const mine = isTeam1 ? sw.team1 : sw.team2;
+      const theirs = isTeam1 ? sw.team2 : sw.team1;
+      children.push(el("div", { class: "next-status" }, `You submitted ${mine}-${theirs}. Waiting for ${opp ? opp.name : "your opponent"} to confirm it.`));
+    } else {
+      children.push(el("div", { class: "next-status" }, "Your opponent has submitted a score - confirm or dispute it above."));
+    }
+    return el("div", { class: "card next-card" }, children);
+  }
+
+  // All of this team's matches, grouped by what needs doing.
+  function matchesSection() {
+    const { team, fixtures, results, teamsById } = ctx;
+    const nodes = [];
+    const groups = { confirm: [], toPlay: [], waiting: [], disputed: [], played: [] };
+
+    myLeagueFixtures()
+      .sort((a, b) => a.week - b.week)
+      .forEach((f) => {
+        if (f.status === "bye") return groups.toPlay.push(f);
+        const r = window.Results.activeResultForFixture(f.id, results);
+        if (!r) groups.toPlay.push(f);
+        else if (r.confirmation_status === "confirmed") groups.played.push(f);
+        else if (r.confirmation_status === "disputed") groups.disputed.push(f);
+        else if (r.confirmation_status === "pending" && r.submitted_by_team_id !== team.id) groups.confirm.push(f);
+        else groups.waiting.push(f);
+      });
+
+    const group = (title, list, extraClass) =>
+      list.length
+        ? el("div", { class: `card ${extraClass || ""}` }, [
+            el("h3", { class: "group-title" }, [title, el("span", { class: "group-count" }, String(list.length))]),
+            el("div", { class: "stack" }, list.map((f) => fixtureRow(f)))
+          ])
+        : null;
+
+    if (!myLeagueFixtures().length) {
+      nodes.push(el("div", { class: "card" }, window.Render.emptyState("calendar", "Fixtures haven't been generated yet - check back once your organiser sets the schedule.")));
+    } else {
+      nodes.push(group("Needs your confirmation", groups.confirm, "attention-card"));
+      nodes.push(group("To play", groups.toPlay));
+      nodes.push(group("Waiting for your opponent", groups.waiting));
+      nodes.push(group("Disputed - your organiser decides", groups.disputed));
+      nodes.push(group("Played", groups.played));
+    }
+
     const myPlayoffFixtures = fixtures.filter((f) => f.stage !== "league" && (f.team1_id === team.id || f.team2_id === team.id));
-
-    app.appendChild(
-      el("div", { class: "card" }, [
-        el("h3", {}, "My fixtures"),
-        myFixtures.length
-          ? el("div", { class: "stack" }, myFixtures.sort((a, b) => a.week - b.week).map((f) => fixtureRow(f)))
-          : el("p", { class: "empty-state" }, "Fixtures haven't been generated yet - check back once your admin sets the schedule.")
-      ])
-    );
-
     if (myPlayoffFixtures.length) {
       const stageOrder = { QF: 0, SF: 1, F: 2 };
-      app.appendChild(
+      nodes.push(
         el("div", { class: "card" }, [
           el("h3", {}, "My playoff matches"),
           el("div", { class: "stack" }, myPlayoffFixtures.sort((a, b) => stageOrder[a.stage] - stageOrder[b.stage]).map((f) => fixtureRow(f)))
@@ -276,22 +437,49 @@
       );
     }
 
+    const confirmedFixtureIds = new Set(results.filter((r) => r.confirmation_status === "confirmed" && !r.superseded).map((r) => r.fixture_id));
     const { played, remaining } = window.Fixtures.opponentSplit(team.id, fixtures, confirmedFixtureIds);
-    app.appendChild(
-      el("div", { class: "card" }, [
-        el("h3", {}, "Opponent tracker"),
-        el("div", { class: "opponent-split" }, [
-          opponentList("Played", played, teamsById, "✅"),
-          opponentList("Still to play", remaining, teamsById, "⬜")
-        ])
+    nodes.push(
+      el("details", { class: "card" }, [
+        el("summary", {}, "Opponent tracker"),
+        el("div", { class: "opponent-split" }, [opponentList("Played", played, teamsById, "✅"), opponentList("Still to play", remaining, teamsById, "⬜")])
       ])
     );
+    return nodes;
+  }
 
-    app.appendChild(el("div", { class: "card" }, [el("h3", {}, "League table"), standingsTable(standings)]));
+  function tableSection(standings) {
+    const { league, fixtures, results, teamsById } = ctx;
+    const nodes = [];
+    if (league && (league.status === "completed" || league.status === "archived")) nodes.push(championCard(fixtures, results, teamsById));
+    nodes.push(
+      el("div", { class: "card" }, [
+        el("h3", {}, "League table"),
+        standingsTable(standings),
+        el("p", { class: "muted small table-note" }, "Ranked by points, then set difference, then sets won.")
+      ])
+    );
+    return nodes;
+  }
 
-    if (league && league.rules && ctx.accepted) app.appendChild(rulesCard(ctx.accepted));
-
-    window.scrollTo(0, scrollY);
+  // The accepted rules, opened, plus the league's basic details.
+  function rulesSection() {
+    const { league, payment } = ctx;
+    const info = [];
+    if (league && league.start_date) info.push(["Started", formatDate(league.start_date)]);
+    if (league && league.num_courts) info.push(["Courts", String(league.num_courts)]);
+    if (window.EntryFee.leagueHasFee(league)) {
+      info.push(["Entry fee", `${window.EntryFee.formatRand(window.EntryFee.priceFor(league.entry_fee_cents).total)} per team${payment && payment.status === "complete" ? " - paid" : ""}`]);
+    }
+    return [
+      rulesCard(ctx.accepted, true),
+      info.length
+        ? el("div", { class: "card" }, [
+            el("h3", {}, "League details"),
+            el("dl", { class: "info-list" }, info.flatMap(([k, v]) => [el("dt", {}, k), el("dd", {}, v)]))
+          ])
+        : null
+    ];
   }
 
   // The accept screen. A team link has no login, so "accepting" is typing a
@@ -495,8 +683,8 @@
 
   // The rules the team accepted, for re-reading any time - collapsed by
   // default at the bottom of the dashboard so it doesn't get in the way.
-  function rulesCard(accepted) {
-    return el("details", { class: "card rules-card" }, [
+  function rulesCard(accepted, open) {
+    return el("details", { class: "card rules-card", open: open ? "" : undefined }, [
       el("summary", {}, "League rules"),
       el("p", { class: "muted small" }, `Accepted by ${accepted.accepted_name} on ${formatDate(accepted.created_at.slice(0, 10))}`),
       rulesList(accepted.rules_snapshot)
