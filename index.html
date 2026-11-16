@@ -2,14 +2,227 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Padel League Manager</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#0a0f1d">
+<title>Padel League Manager - run your padel league without the admin</title>
+<meta name="description" content="Fixtures, scores, league tables and entry fees for padel leagues in South Africa. Players use a private link on their phone - no app, no account. R50 once per league.">
+<link rel="icon" type="image/png" sizes="32x32" href="assets/logo-32.png?v=47">
+<link rel="icon" type="image/png" sizes="16x16" href="assets/logo-16.png?v=47">
+<link rel="apple-touch-icon" sizes="180x180" href="assets/logo-180.png?v=47">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css?v=47">
 </head>
 <body>
+
+<header class="app-header">
+  <div class="header-inner">
+    <img class="brand-mark" src="assets/logo-192.png?v=47" alt="Padel League Manager">
+    <div>
+      <h1>Padel League Manager</h1>
+    </div>
+  </div>
+</header>
+
+<main class="landing">
+
+  <!-- Hero -->
+  <section class="lp-hero">
+    <div class="lp-wrap lp-hero-grid">
+      <div class="lp-hero-copy">
+        <p class="lp-eyebrow">Padel leagues, made simple</p>
+        <h2 class="lp-title">Run your padel league without the admin.</h2>
+        <p class="lp-lead">Fixtures, scores, league tables and entry fees in one place. Your players get a private link on their phone - no app to download and no account to create.</p>
+        <div class="lp-cta">
+          <a class="btn btn-primary" href="register.html">Start a league</a>
+          <a class="btn btn-ghost" href="login.html">Log in</a>
+        </div>
+        <p class="lp-note">R50 once per league. You set the team entry fee.</p>
+
+        <form class="lp-find" id="find-team" autocomplete="off">
+          <label for="team-code">Playing in a league? Enter your team code</label>
+          <div class="lp-find-row">
+            <input class="input" id="team-code" name="code" placeholder="e.g. AB12CD" maxlength="12" autocapitalize="characters" autocorrect="off" spellcheck="false">
+            <button class="btn btn-primary" type="submit">Go to my team</button>
+          </div>
+        </form>
+      </div>
+
+      <!-- A picture of what players see on their phone -->
+      <div class="lp-hero-visual" aria-hidden="true">
+        <div class="lp-phone">
+          <div class="lp-phone-screen">
+            <div class="mock-eyebrow">Friday Night Padel League</div>
+            <div class="mock-team">Smash Bros</div>
+            <div class="mock-rank">2nd <span>of 8 teams</span></div>
+            <div class="mock-tiles">
+              <div><b>5</b>Played</div><div><b>4</b>Won</div><div><b>1</b>Lost</div><div><b>9</b>Points</div>
+            </div>
+            <div class="mock-next">
+              <small>Your next match · Week 6</small>
+              <b>The Lobsters</b>
+              <div class="mock-btn">Submit result</div>
+            </div>
+          </div>
+          <div class="mock-nav"><span class="on">Home</span><span>Matches</span><span>Table</span><span>Availability</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- How it works -->
+  <section class="lp-section">
+    <div class="lp-wrap">
+      <h2 class="lp-h2">How it works</h2>
+      <p class="lp-sub">From sign-up to your first match in an evening.</p>
+      <ol class="lp-steps">
+        <li>
+          <span class="lp-step-n">1</span>
+          <h3>Create your league</h3>
+          <p>Name it, choose your courts and playoff format, add your rules and, if you want, an entry fee per team.</p>
+        </li>
+        <li>
+          <span class="lp-step-n">2</span>
+          <h3>Activate it for R50</h3>
+          <p>A once-off payment per league. Then add your teams and generate the fixtures in one click.</p>
+        </li>
+        <li>
+          <span class="lp-step-n">3</span>
+          <h3>Share the team links</h3>
+          <p>Every team gets a private link. They accept the rules, pay their entry fee, and look after their own scores.</p>
+        </li>
+      </ol>
+    </div>
+  </section>
+
+  <!-- Features -->
+  <section class="lp-section lp-alt">
+    <div class="lp-wrap">
+      <h2 class="lp-h2">Everything a league needs</h2>
+      <p class="lp-sub">And nothing it doesn't.</p>
+      <div class="lp-grid">
+        <div class="lp-feature"><h3>Automatic fixtures</h3><p>Round-robin schedules spread across your courts, with bye weeks handled for you.</p></div>
+        <div class="lp-feature"><h3>Scores both teams agree on</h3><p>One team submits the score, the other confirms it. Disagreements go to you, and your decision is final.</p></div>
+        <div class="lp-feature"><h3>A live league table</h3><p>Points, set difference and positions update the moment a score is confirmed.</p></div>
+        <div class="lp-feature"><h3>Playoffs</h3><p>Seed the top teams into quarter-finals, semi-finals and a final. Winners move through automatically.</p></div>
+        <div class="lp-feature"><h3>Entry fees, paid online</h3><p>Teams pay by card or instant EFT through PayFast. You see who has paid at a glance.</p></div>
+        <div class="lp-feature"><h3>Rules everyone accepts</h3><p>Start from a ready-made set of league rules, adjust them, and every team accepts them before they play.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- For players -->
+  <section class="lp-section">
+    <div class="lp-wrap lp-split">
+      <div>
+        <h2 class="lp-h2">Players: one link, nothing to install</h2>
+        <p class="lp-sub">Open your team link on any phone and you're in.</p>
+        <ul class="lp-ticks">
+          <li>See your next match, your position and the full league table</li>
+          <li>Submit a score in seconds, or confirm your opponent's</li>
+          <li>Tell your opponents when your team is free to play</li>
+          <li>Pay your team's entry fee once, for both partners</li>
+        </ul>
+      </div>
+      <div class="lp-card-note">
+        <h3>Keep your link private</h3>
+        <p>Anyone with your team's link can submit scores for your team, so share it only with your partner.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Pricing -->
+  <section class="lp-section lp-alt" id="pricing">
+    <div class="lp-wrap">
+      <h2 class="lp-h2">Simple, honest pricing</h2>
+      <p class="lp-sub">No subscriptions. No surprises for your players.</p>
+      <div class="lp-pricing">
+        <div class="lp-price-card">
+          <div class="lp-price-label">For organisers</div>
+          <div class="lp-price">R50 <span>once per league</span></div>
+          <ul class="lp-ticks">
+            <li>Fixtures, results, table and playoffs</li>
+            <li>Private links for every team</li>
+            <li>League rules your teams accept</li>
+            <li>Optional online entry fees</li>
+          </ul>
+          <a class="btn btn-primary block" href="register.html">Start a league</a>
+        </div>
+        <div class="lp-price-card">
+          <div class="lp-price-label">Entry fees (optional)</div>
+          <p class="lp-price-text">You choose what each <strong>team</strong> pays. Players see one price at checkout: your fee plus a 20% platform fee.</p>
+          <div class="lp-example">
+            <div><span>You set</span><b>R150</b></div>
+            <div><span>Each team pays</span><b>R180</b></div>
+            <div><span>You receive</span><b>R150</b></div>
+          </div>
+          <p class="lp-price-text lp-small">We collect the fees through PayFast and pay you out once your teams have paid. Running a free league? Leave the fee empty - you only pay the R50.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- FAQ -->
+  <section class="lp-section">
+    <div class="lp-wrap lp-narrow">
+      <h2 class="lp-h2">Questions</h2>
+      <div class="lp-faq">
+        <details>
+          <summary>Do players need an account?</summary>
+          <p>No. Each team has a private link. One partner can accept the rules and pay for both of them.</p>
+        </details>
+        <details>
+          <summary>How do players pay?</summary>
+          <p>On their team link, through PayFast, by card or instant EFT. Padel League Manager never sees or stores card details.</p>
+        </details>
+        <details>
+          <summary>What if a team doesn't pay by the cut-off date?</summary>
+          <p>Their link shows that payment has closed, and you decide what to do: extend the date or remove the team.</p>
+        </details>
+        <details>
+          <summary>What about refunds?</summary>
+          <p>Refunds for teams that withdraw are handled by the league organiser.</p>
+        </details>
+        <details>
+          <summary>Can I run a free league?</summary>
+          <p>Yes. Leave the entry fee empty. You still pay the once-off R50 to activate the league.</p>
+        </details>
+        <details>
+          <summary>Where do the court bookings happen?</summary>
+          <p>Court fees are paid separately, directly to the court, when you book on the Playtomic app. Padel League Manager doesn't handle court bookings.</p>
+        </details>
+      </div>
+    </div>
+  </section>
+
+  <!-- Final call to action -->
+  <section class="lp-final">
+    <div class="lp-wrap">
+      <h2 class="lp-h2">Ready to run your league?</h2>
+      <p class="lp-sub">Create your account, set up your league and share the links tonight.</p>
+      <div class="lp-cta lp-cta-center">
+        <a class="btn btn-primary" href="register.html">Start a league</a>
+        <a class="btn btn-ghost" href="login.html">Log in</a>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<script src="config.js?v=47"></script>
+<script src="db.js?v=47"></script>
+<script src="render.js?v=47"></script>
+<script src="auth.js?v=47"></script>
+<script src="shell.js?v=47"></script>
 <script>
-  // No standalone landing page exists - the two real entry points are
-  // admin.html (organisers/admin) and team.html (players, via their own
-  // /team/<code> link). Redirect a bare "/" straight to the admin console.
-  window.location.replace("admin.html");
+  // "Find my team": send a player straight to their team link.
+  document.getElementById("find-team").addEventListener("submit", function (e) {
+    e.preventDefault();
+    var code = document.getElementById("team-code").value.toUpperCase().replace(/[^A-Z0-9]/g, "");
+    if (!code) return;
+    window.location.href = "team.html?code=" + encodeURIComponent(code);
+  });
 </script>
 </body>
 </html>

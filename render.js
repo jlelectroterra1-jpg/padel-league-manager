@@ -136,6 +136,32 @@
     tabs.scrollLeft = Math.max(0, active.offsetLeft - (tabs.clientWidth - active.offsetWidth) / 2);
   }
 
+  // A password box with a Show/Hide button, so people can check what they typed
+  // (on a phone keyboard that matters).
+  function passwordField(labelText, input) {
+    const toggle = el("button", { class: "input-toggle", type: "button", "aria-label": "Show password" }, "Show");
+    toggle.addEventListener("click", () => {
+      const show = input.type === "password";
+      input.type = show ? "text" : "password";
+      toggle.textContent = show ? "Hide" : "Show";
+      toggle.setAttribute("aria-label", show ? "Hide password" : "Show password");
+    });
+    return el("label", { class: "field" }, [el("span", {}, labelText), el("div", { class: "input-group" }, [input, toggle])]);
+  }
+
+  // Sign-in / sign-up page: a short pitch beside the form on a wide screen
+  // (hidden on a phone, where the form comes first and fills the width).
+  function authLayout(heading, text, points, form) {
+    return el("div", { class: "auth-layout" }, [
+      el("aside", { class: "auth-aside" }, [
+        el("h2", {}, heading),
+        el("p", {}, text),
+        el("ul", { class: "lp-ticks" }, points.map((p) => el("li", {}, p)))
+      ]),
+      form
+    ]);
+  }
+
   // Small line icons (24x24 grid, drawn with the current text colour), so the
   // interface can use pictures without any image files or libraries.
   const ICONS = {
@@ -188,5 +214,5 @@
     form.submit();
   }
 
-  window.Render = { el, formatDate, badge, qs, genAccessCode, formatSets, scoreGrid, scoreInput, wireAutoAdvance, rulesList, postForm, icon, skeleton, emptyState, revealActiveTab };
+  window.Render = { el, formatDate, badge, qs, genAccessCode, formatSets, scoreGrid, scoreInput, wireAutoAdvance, rulesList, postForm, icon, skeleton, emptyState, revealActiveTab, passwordField, authLayout };
 })();

@@ -19,22 +19,29 @@
       );
       return;
     }
-    app.appendChild(loginForm());
+    app.appendChild(
+      window.Render.authLayout(
+        "Run your league from anywhere.",
+        "Log in to manage your fixtures, scores and teams.",
+        ["Fixtures and scores in one place", "Players use a private link - no accounts to create", "Entry fees collected online through PayFast"],
+        loginForm()
+      )
+    );
   }
 
   function loginForm() {
     const email = el("input", { class: "input", type: "email", placeholder: "you@example.com", autocomplete: "email" });
     const password = el("input", { class: "input", type: "password", placeholder: "Password", autocomplete: "current-password" });
     const error = el("p", { class: "form-error", hidden: true });
-    const submitBtn = el("button", { class: "btn btn-primary", type: "submit" }, "Log in");
+    const submitBtn = el("button", { class: "btn btn-primary block", type: "submit" }, "Log in");
 
-    const form = el("form", { class: "card" }, [
-      el("h2", {}, "Organiser login"),
+    const form = el("form", { class: "card auth-form" }, [
+      el("h2", {}, "Welcome back"),
       field("Email", email),
-      field("Password", password),
+      window.Render.passwordField("Password", password),
       error,
       submitBtn,
-      el("p", { class: "muted small" }, ["Don't have an account? ", el("a", { href: "register.html", style: "color:var(--brand)" }, "Sign up")])
+      el("p", { class: "muted small auth-switch" }, ["New here? ", el("a", { href: "register.html" }, "Create an account")])
     ]);
 
     form.addEventListener("submit", async (e) => {

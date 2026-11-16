@@ -85,7 +85,7 @@
     const home = profile ? (profile.role === "owner" ? "owner.html" : "my-leagues.html") : "login.html";
 
     const brand = el("a", { class: "brand-link", href: home }, [
-      el("img", { class: "brand-mark", src: "assets/logo-192.png?v=46", alt: "" }),
+      el("img", { class: "brand-mark", src: "assets/logo-192.png?v=47", alt: "" }),
       el("span", { class: "brand-name" }, "Padel League Manager")
     ]);
 
@@ -129,6 +129,8 @@
     const inner = el("div", { class: "shell-inner" }, [brand, nav, el("div", { class: "shell-spacer" }), right]);
     header.innerHTML = "";
     header.classList.add("shell");
+    // The front page is laid out wider than the app pages; line the bar up with it.
+    header.classList.toggle("wide", !!document.querySelector(".landing"));
     header.appendChild(inner);
   }
 
@@ -136,7 +138,11 @@
     if (document.querySelector(".app-footer")) return;
     const footer = el("footer", { class: "app-footer" }, [
       el("span", {}, `© ${new Date().getFullYear()} Padel League Manager`),
-      el("span", {}, "Made for South African padel leagues")
+      el("span", { class: "footer-links" }, [
+        el("a", { href: "terms.html" }, "Terms"),
+        el("a", { href: "privacy.html" }, "Privacy"),
+        el("a", { href: "index.html" }, "Home")
+      ])
     ]);
     document.body.appendChild(footer);
   }

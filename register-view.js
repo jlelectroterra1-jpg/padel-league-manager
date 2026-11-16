@@ -21,29 +21,37 @@
       );
       return;
     }
-    app.appendChild(registerForm());
+    app.appendChild(
+      window.Render.authLayout(
+        "Start a league in minutes.",
+        "Create your organiser account, set up your league, and share the team links.",
+        ["Fixtures are generated for you", "Teams get private links - no accounts needed", "Collect entry fees online through PayFast", "R50 once per league, and you're live"],
+        registerForm()
+      )
+    );
   }
 
   function registerForm() {
     const name = el("input", { class: "input", placeholder: "Your name", autocomplete: "name" });
     const email = el("input", { class: "input", type: "email", placeholder: "you@example.com", autocomplete: "email" });
-    const phone = el("input", { class: "input", type: "tel", placeholder: "Optional", autocomplete: "tel" });
+    const phone = el("input", { class: "input", type: "tel", placeholder: "e.g. 082 123 4567", autocomplete: "tel" });
     const password = el("input", { class: "input", type: "password", placeholder: "At least 6 characters", autocomplete: "new-password" });
     const confirmPassword = el("input", { class: "input", type: "password", placeholder: "Re-enter your password", autocomplete: "new-password" });
     const error = el("p", { class: "form-error", hidden: true });
-    const submitBtn = el("button", { class: "btn btn-primary", type: "submit" }, "Create organiser account");
+    const submitBtn = el("button", { class: "btn btn-primary block", type: "submit" }, "Create my account");
 
-    const form = el("form", { class: "card" }, [
-      el("h2", {}, "Organiser sign up"),
-      el("p", { class: "muted small" }, "Create your organiser account, then set up your first league. Each league costs R50 to activate."),
+    const form = el("form", { class: "card auth-form" }, [
+      el("h2", {}, "Create your organiser account"),
+      el("p", { class: "muted small field-sub" }, "Free to sign up. Each league costs R50 to activate."),
       field("Name", name),
       field("Email", email),
-      field("Phone", phone),
-      field("Password", password),
-      field("Confirm password", confirmPassword),
+      field("Phone (optional)", phone),
+      window.Render.passwordField("Password", password),
+      window.Render.passwordField("Confirm password", confirmPassword),
       error,
       submitBtn,
-      el("p", { class: "muted small" }, ["Already registered? ", el("a", { href: "login.html", style: "color:var(--brand)" }, "Log in")])
+      el("p", { class: "muted small auth-switch" }, ["Already have an account? ", el("a", { href: "login.html" }, "Log in")]),
+      el("p", { class: "muted small auth-switch" }, ["By creating an account you agree to the ", el("a", { href: "terms.html" }, "Terms"), " and ", el("a", { href: "privacy.html" }, "Privacy Policy"), "."])
     ]);
 
     form.addEventListener("submit", async (e) => {
@@ -99,7 +107,7 @@
       } catch (err) {
         console.error(err);
         submitBtn.disabled = false;
-        submitBtn.textContent = "Create organiser account";
+        submitBtn.textContent = "Create my account";
         error.hidden = false;
         error.textContent = err.message || "Couldn't create your account - please try again.";
       }
