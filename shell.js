@@ -96,7 +96,7 @@
     const home = profile ? (profile.role === "owner" ? "owner.html" : "my-leagues.html") : "login.html";
 
     const brand = el("a", { class: "brand-link", href: home }, [
-      el("img", { class: "brand-mark", src: "assets/logo-192.png?v=55", alt: "" }),
+      el("img", { class: "brand-mark", src: "assets/logo-192.png?v=57", alt: "" }),
       el("span", { class: "brand-name" }, "Padel League Manager")
     ]);
 

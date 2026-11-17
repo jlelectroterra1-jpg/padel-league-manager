@@ -10,7 +10,9 @@
 // project exists. This fallback is single-browser only and is not a
 // substitute for Supabase in real multi-team use.
 (function () {
-  const LS_PREFIX = "pl_";
+  // The demo (demo*.html) keeps its pretend data under its own prefix so it
+  // can never mix with anything else stored in the same browser.
+  const LS_PREFIX = window.LEAGUE_CONFIG && window.LEAGUE_CONFIG.demo ? "pl_demo_" : "pl_";
 
   function hasSupabase() {
     const c = window.LEAGUE_CONFIG || {};

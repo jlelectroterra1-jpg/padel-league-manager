@@ -1,7 +1,10 @@
 // Small localStorage helpers for remembering "who's looking at this browser".
 (function () {
-  const TEAM_CODE_KEY = "pl_team_code";
-  const ADMIN_LEAGUE_KEY = "pl_admin_league";
+  // The demo pages use their own keys so trying the demo never changes which
+  // real team (or league) this browser remembers.
+  const PREFIX = window.LEAGUE_CONFIG && window.LEAGUE_CONFIG.demo ? "pl_demo_" : "pl_";
+  const TEAM_CODE_KEY = PREFIX + "team_code";
+  const ADMIN_LEAGUE_KEY = PREFIX + "admin_league";
 
   function rememberTeamCode(code) {
     localStorage.setItem(TEAM_CODE_KEY, code);

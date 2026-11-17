@@ -41,6 +41,7 @@
   // .../team/XXX form without reloading, so it always matches what "Copy
   // Team Link" in admin hands out, however the page was actually reached.
   function upgradeUrlToCleanPath(code) {
+    if (window.LEAGUE_CONFIG && window.LEAGUE_CONFIG.demo) return; // the demo keeps its own link form
     if (!window.history || !window.history.replaceState) return;
     const cleanPath = location.pathname.replace(/team\.html$/, "") + "team/" + code;
     if (location.pathname === cleanPath && !location.search) return;
@@ -99,6 +100,7 @@
   // names the shortcut after the team. Purely cosmetic: if anything here
   // isn't supported, the page just works as it always did.
   function installTeamShortcut(team) {
+    if (window.LEAGUE_CONFIG && window.LEAGUE_CONFIG.demo) return; // nothing to install for the demo
     try {
       document.title = `${team.name} - Padel League Manager`;
       const head = document.head;

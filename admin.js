@@ -10,6 +10,11 @@
   const app = document.getElementById("app");
   const expandedTeams = new Set();
 
+  // Demo mode (demo-admin.html): a practice league that lives only in the
+  // visitor's browser - see demo.js. It has one league, a cap on teams, and no
+  // fees or deleting, so nobody can run a real league from it.
+  const DEMO = !!(window.LEAGUE_CONFIG && window.LEAGUE_CONFIG.demo);
+
   // The signed-in person's `organisers` row (cached), and the leagues this
   // page load has already confirmed they administer. The database enforces
   // all of this too - these checks are the friendly layer on top.
@@ -89,6 +94,14 @@
     }
     try {
       if (!(await requireSignedIn())) return; // sent to the login page
+      if (DEMO && route.view !== "league") {
+        // The demo is one league - go straight to it (no league list, no creating).
+        const [first] = await dbList("leagues");
+        if (first) {
+          navigate(`#/league/${first.id}/teams`);
+          return;
+        }
+      }
       if (route.view === "leagues") {
         // An organiser's list of leagues is My Leagues (their own, nothing
         // else); only the Owner sees the full list here.
@@ -559,7 +572,9 @@
 
     app.appendChild(
       el("div", { class: "detail-header" }, [
-        el("a", { class: "back-link", href: "#/leagues" }, me && me.role === "owner" ? "← All leagues" : "← My leagues"),
+        DEMO
+          ? el("a", { class: "back-link", href: "demo.html" }, "← Demo home")
+          : el("a", { class: "back-link", href: "#/leagues" }, me && me.role === "owner" ? "← All leagues" : "← My leagues"),
         el("h2", {}, league.name),
         badge(league.status, statusKind(league.status))
       ])
@@ -1095,7 +1110,9 @@
     const editing = editingTeams.has(team.id);
     // Only meaningful for a league that has rules - otherwise no badge/line at all.
     const accepted = league.rules ? acceptedByTeam[team.id] : null;
-    const link = `${location.origin}${location.pathname.replace(/admin\.html$/, "")}team/${team.access_code}`;
+    const link = DEMO
+      ? `${location.origin}${location.pathname.replace(/demo-admin\.html$/, "")}demo-team.html?code=${team.access_code}`
+      : `${location.origin}${location.pathname.replace(/admin\.html$/, "")}team/${team.access_code}`;
 
     if (editing) {
       return el("div", { class: "team-row" }, [editTeamForm(team)]);
@@ -1123,7 +1140,8 @@
     const linkRow = el("div", { class: "team-link-row" }, [
       el("span", { class: "muted small" }, "Team link:"),
       el("code", { class: "code-chip" }, link),
-      el("button", { class: "btn btn-ghost small", type: "button", onclick: () => copyToClipboard(link) }, "Copy")
+      el("button", { class: "btn btn-ghost small", type: "button", onclick: () => copyToClipboard(link) }, "Copy"),
+      DEMO && el("a", { class: "btn btn-ghost small", href: link }, "Open as this team")
     ]);
 
     const children = [header, linkRow];
@@ -1198,6 +1216,13 @@
   }
 
   function addTeamForm(league, existingTeams) {
+    if (DEMO && existingTeams.length >= window.Demo.MAX_TEAMS) {
+      return el("div", { class: "card" }, [
+        el("h3", {}, "Add a team"),
+        el("p", { class: "muted" }, `The demo is limited to ${window.Demo.MAX_TEAMS} teams. A real league has no such limit.`),
+        el("a", { class: "btn btn-primary small", href: window.Demo.SIGN_UP_URL }, "Start your own league")
+      ]);
+    }
     const name = el("input", { class: "input", placeholder: "Team name, e.g. Smash Bros" });
     const player1 = el("input", { class: "input", placeholder: "Player 1" });
     const player2 = el("input", { class: "input", placeholder: "Player 2" });
@@ -1793,6 +1818,18 @@
       setTimeout(() => (saved.hidden = true), 1500);
     });
 
+    if (DEMO) {
+      // No entry fee, ending or deleting in the demo - those are for a real league.
+      return el("div", { class: "stack" }, [
+        form,
+        rulesCard(league, acceptances),
+        el("div", { class: "card" }, [
+          el("h3", {}, "In a real league"),
+          el("p", { class: "muted" }, "You can also charge an entry fee that your teams pay on their link, end the league, and keep your teams' history. Those are switched off in the demo."),
+          el("a", { class: "btn btn-primary small", href: window.Demo.SIGN_UP_URL }, "Start your own league")
+        ])
+      ]);
+    }
     return el("div", { class: "stack" }, [form, entryFeeCard(league, acceptances, payments || []), rulesCard(league, acceptances), endLeagueCard(league), deleteLeagueCard(league)]);
   }
 
