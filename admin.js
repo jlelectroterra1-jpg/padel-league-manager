@@ -944,7 +944,7 @@
             : el("p", { class: "muted" }, `Top ${qualifyCount} team${qualifyCount === 1 ? "" : "s"} will qualify based on the current league table.`),
           el(
             "button",
-            { class: "btn btn-primary", type: "button", disabled: remaining > 0 || standings.length < 2, onclick: () => startPlayoffs(league, standings) },
+            { class: "btn btn-primary", type: "button", disabled: remaining > 0 || standings.length < 2, onclick: (e) => startPlayoffs(league, standings, e.currentTarget) },
             "Start playoffs"
           )
         ]),
@@ -952,30 +952,112 @@
       ]);
     }
 
+    const doubled = findDuplicateBrackets(playoffFixtures, results);
+    if (doubled.length) {
+      return el("div", { class: "stack" }, [duplicateBracketCard(doubled), bracketView(playoffFixtures, results, teamsById)]);
+    }
     return bracketView(playoffFixtures, results, teamsById);
   }
 
-  async function startPlayoffs(league, standings) {
+  // True while the playoffs are being created. Creating them takes a couple of
+  // seconds (one request per match), and a second tap during that time used to
+  // build the whole bracket again - every match twice.
+  let startingPlayoffs = false;
+
+  async function startPlayoffs(league, standings, button) {
+    if (startingPlayoffs) return;
     const bracketDefs = window.Playoffs.buildBracket(standings, league.playoff_size || 8);
     if (!bracketDefs.length) {
       alert("Not enough teams for a playoff bracket.");
       return;
     }
-    const slotToId = {};
-    const inserted = [];
-    for (const def of bracketDefs) {
-      const { next_bracket_slot, next_slot, ...rest } = def;
-      const saved = await dbInsert("fixtures", { ...rest, league_id: league.id, week: 900, stage: def.stage });
-      slotToId[def.bracket_slot] = saved.id;
-      inserted.push({ id: saved.id, next_bracket_slot, next_slot });
+    startingPlayoffs = true;
+    if (button) {
+      button.disabled = true;
+      button.textContent = "Starting playoffs...";
     }
-    for (const def of inserted) {
-      if (def.next_bracket_slot) {
-        await dbUpdate("fixtures", def.id, { next_fixture_id: slotToId[def.next_bracket_slot], next_slot: def.next_slot });
+    try {
+      // The page may be out of date (e.g. another tab or admin already started
+      // them), so ask the database rather than trusting what is on screen.
+      const current = await dbList("fixtures", { league_id: `eq.${league.id}` });
+      if (current.some((f) => f.stage !== "league")) {
+        render();
+        return;
       }
+      const slotToId = {};
+      const inserted = [];
+      for (const def of bracketDefs) {
+        const { next_bracket_slot, next_slot, ...rest } = def;
+        const saved = await dbInsert("fixtures", { ...rest, league_id: league.id, week: 900, stage: def.stage });
+        slotToId[def.bracket_slot] = saved.id;
+        inserted.push({ id: saved.id, next_bracket_slot, next_slot });
+      }
+      for (const def of inserted) {
+        if (def.next_bracket_slot) {
+          await dbUpdate("fixtures", def.id, { next_fixture_id: slotToId[def.next_bracket_slot], next_slot: def.next_slot });
+        }
+      }
+      await dbUpdate("leagues", league.id, { status: "playoffs" });
+      render();
+    } catch (err) {
+      console.error(err);
+      alert(`Couldn't start the playoffs: ${err.message || err}`);
+      render();
+    } finally {
+      startingPlayoffs = false;
     }
-    await dbUpdate("leagues", league.id, { status: "playoffs" });
-    render();
+  }
+
+  // A league whose playoffs were started twice has two complete brackets (two
+  // Finals, each with its own semi-finals and quarter-finals). Returns the
+  // extra copies that are safe to remove: ones with no score recorded on any
+  // of their matches. The copy kept is the one with scores, else the first made.
+  function findDuplicateBrackets(playoffFixtures, results) {
+    const finals = playoffFixtures.filter((f) => f.stage === "F");
+    if (finals.length < 2) return [];
+    const scored = new Set(results.map((r) => r.fixture_id));
+    const brackets = finals.map((final) => {
+      const ids = new Set([final.id]);
+      let grew = true;
+      while (grew) {
+        grew = false;
+        playoffFixtures.forEach((f) => {
+          if (!ids.has(f.id) && f.next_fixture_id && ids.has(f.next_fixture_id)) {
+            ids.add(f.id);
+            grew = true;
+          }
+        });
+      }
+      const matches = playoffFixtures.filter((f) => ids.has(f.id));
+      return { created: final.created_at || "", matches, hasScores: matches.some((m) => scored.has(m.id)) };
+    });
+    brackets.sort((a, b) => (a.hasScores === b.hasScores ? String(a.created).localeCompare(String(b.created)) : a.hasScores ? -1 : 1));
+    return brackets.slice(1).filter((b) => !b.hasScores);
+  }
+
+  function duplicateBracketCard(doubled) {
+    const count = doubled.reduce((n, b) => n + b.matches.length, 0);
+    const btn = el("button", { class: "btn btn-primary", type: "button" }, `Remove the ${count} extra matches`);
+    btn.addEventListener("click", async () => {
+      btn.disabled = true;
+      btn.textContent = "Removing...";
+      try {
+        // Quarter-finals first, then semi-finals, then the final: a match can't
+        // be removed while another still points at it.
+        const order = window.Playoffs.STAGE_ORDER;
+        const all = doubled.flatMap((b) => b.matches).sort((a, b) => order.indexOf(a.stage) - order.indexOf(b.stage));
+        for (const f of all) await dbDelete("fixtures", f.id);
+      } catch (err) {
+        console.error(err);
+        alert(`Couldn't remove them: ${err.message || err}`);
+      }
+      render();
+    });
+    return el("div", { class: "card" }, [
+      el("h3", {}, "The playoffs were created twice"),
+      el("p", { class: "muted" }, `Every playoff match is on this page twice. The extra copy has no scores yet, so it is safe to remove - your teams and scores are not affected.`),
+      btn
+    ]);
   }
 
   function bracketView(playoffFixtures, results, teamsById) {
