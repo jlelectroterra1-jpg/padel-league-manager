@@ -35,6 +35,19 @@
     // then leagues is fetched by exactly those ids - PostgREST doesn't
     // support filtering leagues through the join in a single plain query
     // the way this app's raw-fetch db.js talks to it.
+    // A "Create a league" from here is always the organiser's own league,
+    // never a club's (see club-view.js / admin.js).
+    sessionStorage.removeItem("pl_club_ctx");
+    // Clubs this organiser belongs to (migration_014; quietly skipped if the
+    // database doesn't have clubs yet).
+    let clubs = [];
+    try {
+      const clubLinks = await dbList("club_members", { organiser_id: `eq.${organiser.id}` });
+      if (clubLinks.length) clubs = await dbList("clubs", { id: `in.(${clubLinks.map((m) => m.club_id).join(",")})` });
+    } catch (e) {
+      clubs = [];
+    }
+
     const memberships = await dbList("league_admins", { organiser_id: `eq.${organiser.id}` });
     const leagueIds = memberships.map((m) => m.league_id);
     const leagues = leagueIds.length ? await dbList("leagues", { id: `in.(${leagueIds.join(",")})` }) : [];
@@ -49,6 +62,15 @@
       window.Render.pageHead("My leagues", `Welcome back, ${organiser.name}.`, [
         el("a", { class: "btn btn-primary", href: "admin.html#/new" }, "+ Create a league")
       ])
+    );
+
+    clubs.forEach((c) =>
+      app.appendChild(
+        el("a", { class: "card club-banner", href: `club/${c.slug}` }, [
+          el("div", {}, [el("div", { class: "league-row-name" }, c.name), el("div", { class: "muted small" }, "Open the club hub to run the club's leagues and events")]),
+          el("span", { class: "btn btn-primary small" }, "Open club")
+        ])
+      )
     );
 
     app.appendChild(

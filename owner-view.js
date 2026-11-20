@@ -77,8 +77,81 @@
     // Leagues an organiser created that haven't paid their R50 yet.
     const unpaidLeagueIds = new Set(activations.filter((a) => !a.paid).map((a) => a.league_id));
     app.appendChild(statsStrip(organisers, leagues));
+    app.appendChild(await clubsCard(organisers));
     app.appendChild(organisersCard(organisers, leagueAdmins));
     app.appendChild(leaguesCard(leagues, organisers, leagueAdmins, unpaidLeagueIds));
+  }
+
+  // ---------- Clubs (migration_014) ----------
+
+  async function clubsCard(organisers) {
+    let clubs, members;
+    try {
+      [clubs, members] = await Promise.all([dbList("clubs"), dbList("club_members")]);
+    } catch (e) {
+      return el("div", { class: "card" }, [
+        el("h3", {}, "Clubs"),
+        el("p", { class: "muted" }, "Clubs aren't set up in the database yet - run sql/migration_014_clubs.sql in Supabase.")
+      ]);
+    }
+    const byId = Object.fromEntries(organisers.map((o) => [o.id, o]));
+    const name = el("input", { class: "input", placeholder: "Club name, e.g. Padel Up" });
+    const slug = el("input", { class: "input", placeholder: "Link, e.g. padel-up" });
+    const email = el("input", { class: "input", type: "email", placeholder: "Club admin's email (they sign up first)" });
+    const error = el("p", { class: "form-error", hidden: true });
+    const btn = el("button", { class: "btn btn-primary", type: "submit" }, "Create club");
+    // Suggest the link from the name until the link is typed in by hand.
+    let slugTouched = false;
+    slug.addEventListener("input", () => (slugTouched = true));
+    name.addEventListener("input", () => {
+      if (!slugTouched) slug.value = name.value.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+    });
+    const form = el("form", {}, [el("div", { class: "field-row" }, [name, slug]), el("div", { class: "field-row" }, [email, btn]), error]);
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      error.hidden = true;
+      btn.disabled = true;
+      try {
+        await window.DB.dbRpc("create_club", { p_name: name.value, p_slug: slug.value.trim(), p_admin_email: email.value });
+        render();
+      } catch (err) {
+        btn.disabled = false;
+        error.hidden = false;
+        error.textContent = err.message || "Couldn't create the club.";
+      }
+    });
+
+    const rows = clubs.map((c) => {
+      const team = members.filter((m) => m.club_id === c.id).map((m) => (byId[m.organiser_id] ? `${byId[m.organiser_id].name}${m.role === "admin" ? " (admin)" : ""}` : "?"));
+      return el("div", { class: "manage-row" }, [
+        el("div", {}, [
+          el("div", { class: "manage-row-name" }, [c.name, badge(c.status, c.status === "active" ? "green" : "amber")]),
+          el("div", { class: "manage-row-meta" }, `/club/${c.slug} · ${team.join(", ") || "no members"}`)
+        ]),
+        el("div", { class: "manage-row-assign" }, [
+          el(
+            "button",
+            {
+              class: "btn btn-ghost small",
+              type: "button",
+              onclick: async () => {
+                await dbUpdate("clubs", c.id, { status: c.status === "active" ? "suspended" : "active" });
+                render();
+              }
+            },
+            c.status === "active" ? "Pause" : "Switch on"
+          ),
+          el("a", { class: "btn btn-ghost small", href: `club/${c.slug}` }, "Open club")
+        ])
+      ]);
+    });
+
+    return el("div", { class: "card" }, [
+      el("h3", {}, `Clubs (${clubs.length})`),
+      rows.length ? el("div", { class: "stack" }, rows) : el("p", { class: "empty-state" }, "No clubs yet."),
+      el("h4", {}, "Add a club"),
+      form
+    ]);
   }
 
   async function logout() {

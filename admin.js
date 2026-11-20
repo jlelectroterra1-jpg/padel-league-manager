@@ -15,6 +15,22 @@
   // fees or deleting, so nobody can run a real league from it.
   const DEMO = !!(window.LEAGUE_CONFIG && window.LEAGUE_CONFIG.demo);
 
+  // Clubs (see club-view.js): the club home page leaves two notes in
+  // sessionStorage - which club a new league is for (club_ctx, set only when
+  // "League" is tapped on the club page) and where "back" should go
+  // (club_return, the club's own link).
+  const CLUB_KEY = DEMO ? "pl_demo_" : "pl_";
+  function clubContext() {
+    try {
+      return JSON.parse(sessionStorage.getItem(CLUB_KEY + "club_ctx") || "null");
+    } catch (e) {
+      return null;
+    }
+  }
+  function clubReturn() {
+    return sessionStorage.getItem(CLUB_KEY + "club_return");
+  }
+
   // The signed-in person's `organisers` row (cached), and the leagues this
   // page load has already confirmed they administer. The database enforces
   // all of this too - these checks are the friendly layer on top.
@@ -160,13 +176,16 @@
       location.href = "login.html";
       return;
     }
+    const club = clubContext();
     app.innerHTML = "";
     app.appendChild(
       el("div", { class: "detail-header" }, [
-        el("a", { class: "back-link", href: me.role === "owner" ? "owner.html" : "my-leagues.html" }, "← Back")
+        club && clubReturn()
+          ? el("a", { class: "back-link", href: clubReturn() }, `← ${club.name}`)
+          : el("a", { class: "back-link", href: me.role === "owner" ? "owner.html" : "my-leagues.html" }, "← Back")
       ])
     );
-    app.appendChild(newLeagueForm(me));
+    app.appendChild(newLeagueForm(me, club));
   }
 
   function leagueCard(league) {
@@ -219,7 +238,7 @@
     return { id: league.id, needs_activation: false };
   }
 
-  function newLeagueForm(me) {
+  function newLeagueForm(me, club) {
     const name = el("input", { class: "input", placeholder: "e.g. Friday Night Padel League" });
     const description = el("input", { class: "input", placeholder: "Optional description" });
     const startDate = el("input", { class: "input", type: "date" });
@@ -248,8 +267,12 @@
     const { pageHead, formSection } = window.Render;
     const form = el("form", { class: "form-sections" }, [
       pageHead(
-        "Create a new league",
-        me && me.role === "organiser" ? "After you create the league you'll be asked to pay R50 to activate it. Your teams' links start working once it's paid." : null
+        club ? `New ${club.name} league` : "Create a new league",
+        club
+          ? `This league belongs to ${club.name}, so everyone on the club team can run it. Nothing to activate - it's part of the club's subscription.`
+          : me && me.role === "organiser"
+            ? "After you create the league you'll be asked to pay R50 to activate it. Your teams' links start working once it's paid."
+            : null
       ),
       formSection(1, "League details", "Every match is 3 sets - each set won is worth 1 league point.", [
         field("League name", name),
@@ -315,8 +338,11 @@
           // Fee columns are only sent for a league that has a fee, so a free
           // league creates exactly the same row as before entry fees existed.
           ...(feeCents ? { entry_fee_cents: feeCents, payment_deadline: deadline.value } : {}),
-          rules: LeagueRules.build(rules.getConfig(), { payments: !!feeCents })
+          rules: LeagueRules.build(rules.getConfig(), { payments: !!feeCents }),
+          ...(club ? { club_id: club.id } : {})
         });
+        // Used once: a later "Create a league" from My leagues is the person's own.
+        sessionStorage.removeItem(CLUB_KEY + "club_ctx");
         // An organiser's new league goes straight to the R50 pay screen.
         navigate(`#/league/${created.id}/${created.needs_activation ? "activate" : "teams"}`);
       } catch (err) {
@@ -572,9 +598,11 @@
 
     app.appendChild(
       el("div", { class: "detail-header" }, [
-        DEMO
-          ? el("a", { class: "back-link", href: "demo.html" }, "← Demo home")
-          : el("a", { class: "back-link", href: "#/leagues" }, me && me.role === "owner" ? "← All leagues" : "← My leagues"),
+        league.club_id && clubReturn()
+          ? el("a", { class: "back-link", href: clubReturn() }, "← Club home")
+          : DEMO
+            ? el("a", { class: "back-link", href: "demo.html" }, "← Demo home")
+            : el("a", { class: "back-link", href: "#/leagues" }, me && me.role === "owner" ? "← All leagues" : "← My leagues"),
         el("h2", {}, league.name),
         badge(league.status, statusKind(league.status))
       ])

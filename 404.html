@@ -25,8 +25,13 @@
 // folder that isn't published, like this repo's apple-watch-scorer/).
 (function () {
   var path = window.location.pathname;
+  var club = path.match(/\/club\/([^\/]+)\/?$/);
   var idx = path.search(/\/(?:team|t)\/[^\/]+\/?$/);
-  if (idx !== -1) {
+  if (club) {
+    // Club links: ".../club/padel-up" -> club.html?c=padel-up (club-view.js
+    // puts the clean address back in the bar).
+    window.location.replace(window.location.origin + "/club.html?c=" + encodeURIComponent(decodeURIComponent(club[1])));
+  } else if (idx !== -1) {
     var base = path.slice(0, idx + 1);
     var code = decodeURIComponent(path.slice(idx).match(/\/(?:team|t)\/([^\/]+)\/?$/)[1]);
     window.location.replace(base + "team.html?code=" + encodeURIComponent(code));
