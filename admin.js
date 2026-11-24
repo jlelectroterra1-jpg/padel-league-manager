@@ -1412,13 +1412,34 @@
     const leagueFixtures = fixtures.filter((f) => f.stage === "league");
 
     const playoffsStarted = league.status === "playoffs" || league.status === "completed" || league.status === "archived";
+
+    // How many weeks the league stage runs. The default is one round a week
+    // (the longest); fewer weeks means some weeks have two matches per team.
+    // Nothing is saved for this: the generated fixtures themselves carry it,
+    // so a league that already has fixtures starts on its current length.
+    const range = window.Fixtures.weekRange(activeTeams.length);
+    const currentWeeks = leagueFixtures.length ? Math.max(...leagueFixtures.map((f) => f.week)) : 0;
+    let leagueWeeks = Math.min(Math.max(leagueWeeksChoice[league.id] || currentWeeks || range.max, range.min), range.max);
+    const hint = el("p", { class: "muted small" }, weeksHint(league, activeTeams.length, leagueWeeks, range));
+    const weeksSelect = el("select", { class: "input" }, []);
+    for (let w = range.min; w <= range.max; w++) {
+      weeksSelect.appendChild(el("option", { value: String(w) }, `${w} week${w === 1 ? "" : "s"}`));
+    }
+    weeksSelect.value = String(leagueWeeks);
+    weeksSelect.disabled = playoffsStarted;
+    weeksSelect.addEventListener("change", () => {
+      leagueWeeks = Number(weeksSelect.value);
+      leagueWeeksChoice[league.id] = leagueWeeks;
+      hint.textContent = weeksHint(league, activeTeams.length, leagueWeeks, range);
+    });
+
     const generateBtn = el(
       "button",
       {
         class: "btn btn-primary",
         type: "button",
         disabled: activeTeams.length < 2 || playoffsStarted,
-        onclick: () => generateFixtures(league, activeTeams, leagueFixtures)
+        onclick: () => generateFixtures(league, activeTeams, leagueFixtures, leagueWeeks)
       },
       leagueFixtures.length ? "Regenerate fixtures" : "Generate fixtures"
     );
@@ -1428,6 +1449,8 @@
         el("p", { class: "muted" }, `${activeTeams.length} active team${activeTeams.length === 1 ? "" : "s"} · ${league.num_courts || 1} court${league.num_courts === 1 ? "" : "s"}`),
         generateBtn
       ]),
+      range.min < range.max ? field("League weeks", weeksSelect) : null,
+      range.min < range.max ? hint : null,
       activeTeams.length < 2 ? el("p", { class: "form-error" }, "Add at least 2 active teams first.") : null,
       playoffsStarted ? el("p", { class: "muted small" }, "Playoffs have started - the league schedule is locked.") : null
     ]);
@@ -1445,6 +1468,26 @@
       .map((week) => weekCard(week, byWeek[week], teamsById, results));
 
     return el("div", { class: "stack" }, [header, ...weeks]);
+  }
+
+  // The week count picked on the Fixtures tab, per league (kept across redraws).
+  const leagueWeeksChoice = {};
+
+  // Playoff rounds that will follow the league weeks: the bracket is the
+  // biggest power of two within the playoff size and the team count.
+  function playoffRoundCount(league, teamCount) {
+    const size = Math.min(league.playoff_size || 8, teamCount);
+    let bracket = 1;
+    while (bracket * 2 <= size) bracket *= 2;
+    return bracket >= 2 ? Math.log2(bracket) : 0;
+  }
+
+  function weeksHint(league, teamCount, weeks, range) {
+    const perWeek = Math.ceil(range.rounds / weeks);
+    const parts = [perWeek === 1 ? "Each team plays once a week." : `Each team plays up to ${perWeek} matches in a week.`, "Everyone still plays everyone once."];
+    const playoffs = playoffRoundCount(league, teamCount);
+    if (playoffs) parts.push(`${weeks} league weeks + ${playoffs} playoff round${playoffs === 1 ? "" : "s"} = ${weeks + playoffs} weeks in all.`);
+    return parts.join(" ");
   }
 
   const enterScoreFixtures = new Set();
@@ -1631,11 +1674,11 @@
     return el("div", { class: "matchup" }, [teamBlock(team1), el("div", { class: "matchup-vs" }, "vs"), teamBlock(team2)]);
   }
 
-  async function generateFixtures(league, activeTeams, existingFixtures) {
+  async function generateFixtures(league, activeTeams, existingFixtures, weeks) {
     if (existingFixtures.length && !confirm("This replaces the current fixture list AND deletes any scores already recorded against it. Continue?")) return;
     for (const f of existingFixtures) await dbDelete("fixtures", f.id);
     const teamIds = activeTeams.map((t) => t.id);
-    const generated = window.Fixtures.generateRoundRobin(teamIds, league.num_courts || 1);
+    const generated = window.Fixtures.generateRoundRobin(teamIds, league.num_courts || 1, weeks);
     for (const f of generated) await dbInsert("fixtures", { ...f, league_id: league.id });
     if (league.status === "draft") await dbUpdate("leagues", league.id, { status: "active" });
     render();

@@ -459,7 +459,7 @@
     const groups = { confirm: [], toPlay: [], waiting: [], disputed: [], played: [] };
 
     myLeagueFixtures()
-      .sort((a, b) => a.week - b.week)
+      .sort(window.Fixtures.byPlayOrder)
       .forEach((f) => {
         if (f.status === "bye") return groups.toPlay.push(f);
         const r = window.Results.activeResultForFixture(f.id, results);

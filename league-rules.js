@@ -16,7 +16,7 @@
 (function (root) {
   const BASE_RULES = [
     // ---------- Locked ----------
-    { key: "format", group: "Format and scoring", locked: true, text: "The league is a round-robin: every team plays every other team once, in weekly rounds." },
+    { key: "format", group: "Format and scoring", locked: true, text: "The league is a round-robin: every team plays every other team once, spread over the league's weeks. In some weeks a team may have more than one match." },
     { key: "scoring", group: "Format and scoring", locked: true, text: "Every match has 3 sets, and each set must have a winner. Every set won is worth 1 league point." },
     { key: "table", group: "Format and scoring", locked: true, text: "The league table is ranked by points, then set difference, then sets won." },
     { key: "submit", group: "Results", locked: true, text: "After a match, one team submits the score in the app and the opposing team confirms it." },
@@ -36,7 +36,7 @@
 
     // ---------- Optional, on by default ----------
     { key: "score-window", group: "Match play", defaultOn: true, params: { submitHours: 48, confirmHours: 48 }, text: "Scores must be submitted within {submitHours} hours of the match, and the opponent must confirm within {confirmHours} hours. After that the organiser may confirm the score." },
-    { key: "round-week", group: "Match play", defaultOn: true, text: "Each round's matches must be played within that round's week. Matches not played may be recorded as forfeits at the organiser's discretion." },
+    { key: "round-week", group: "Match play", defaultOn: true, text: "Each week's matches must be played within that week. Matches not played may be recorded as forfeits at the organiser's discretion." },
     { key: "late", group: "Match play", defaultOn: true, params: { lateMinutes: 15 }, text: "A team not ready within {lateMinutes} minutes of the agreed start time forfeits the match." },
     { key: "cancellation", group: "Match play", defaultOn: true, params: { noticeHours: 24, noShows: 2 }, text: "Cancellations need at least {noticeHours} hours' notice. Repeated no-shows ({noShows}) can mean removal from the league." },
     { key: "deuce", group: "Match play", defaultOn: true, text: "Game scoring: deuce, one advantage, then golden point." },
