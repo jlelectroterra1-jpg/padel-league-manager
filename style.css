@@ -1342,3 +1342,173 @@ a.event-row:hover{ border-color:var(--lime); }
 .event-meta{ white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .member-row .badge{ flex:none; }
 @media (max-width:420px){ .member-row .event-meta{ display:none; } }
+
+/* =====================================================================
+   NEW LOOK - "club scoreboard"
+   Warm paper, near-black ink, one padel-ball lime. Flat surfaces, small
+   radii, no glows/gradients, a sportier typeface. Everything above still
+   uses the same token NAMES, so this block just re-points them; the
+   "--blue*" names now hold the deep court green (kept so no rule needs
+   renaming). Club pages (body.theme-club) set their own tokens and win.
+   ===================================================================== */
+:root{
+    --ink:#16150F;
+    --lime:#C6F432;
+    --lime-dark:#A9D61A;
+
+    --navy:#16150F;
+    --navy-2:#26241C;
+    --blue:#1B5E3B;
+    --blue-600:#1B5E3B;
+    --blue-700:#134A2D;
+    --blue-soft:#E6EDE3;
+
+    --page:#F2EFE6;
+    --panel:#FDFCF8;
+    --field:#FFFFFF;
+    --field-soft:#F6F3EA;
+    --line:#D6D0BF;
+    --line-soft:#E6E1D2;
+    --text:#16150F;
+    --muted:#59564A;
+    --faint:#6B6759;
+    --brand:#1B5E3B;
+    --brand-strong:#134A2D;
+    --accent-soft:#EEF4C8;
+    --accent-line:rgba(27,94,59,0.4);
+    --accent-text:#134A2D;
+    --tint:rgba(22,21,15,0.04);
+    --tint-2:rgba(22,21,15,0.08);
+
+    --radius:10px;
+    --radius-sm:6px;
+    --shadow:none;
+    --shadow-sm:none;
+    --shadow-lg:0 12px 32px rgba(22,21,15,0.18);
+    --ring:0 0 0 3px rgba(27,94,59,0.4);
+    --font-display:"Archivo","Arial Narrow",system-ui,sans-serif;
+    --font-body:"Instrument Sans",system-ui,-apple-system,sans-serif;
+}
+.app-header, .team-hero, .lp-hero, .lp-final{
+    --muted:#D3CEBD;
+    --faint:#A8A290;
+    --brand:#C6F432;
+    --brand-strong:#D9FA6B;
+    --accent-soft:rgba(198,244,50,0.14);
+    --accent-line:rgba(198,244,50,0.5);
+    --accent-text:#DDFB7A;
+}
+.account-menu, .lp-phone-screen{
+    --text:#16150F; --muted:#59564A; --faint:#6B6759;
+    --line:#D6D0BF; --line-soft:#E6E1D2; --panel:#FDFCF8; --field:#FFFFFF; --field-soft:#F6F3EA;
+    --brand:#1B5E3B; --brand-strong:#134A2D;
+    --accent-soft:#EEF4C8; --accent-line:rgba(27,94,59,0.4); --accent-text:#134A2D;
+}
+h1,h2,h3,.lp-title,.lp-h2{ letter-spacing:-0.015em; }
+
+/* header: flat ink with a lime rule */
+.app-header{ background:var(--ink); border-bottom:3px solid var(--lime); }
+.nav-link{ border-radius:6px; }
+.nav-link:hover{ background:rgba(255,255,255,0.1); }
+.nav-link.active{ background:var(--lime); color:var(--ink); }
+body.has-sidebar .nav-link.active{ box-shadow:none; }
+.avatar{ background:var(--lime); color:var(--ink); }
+.account-btn{ border-radius:8px; }
+.account-btn:hover,.account-btn[aria-expanded="true"]{ border-color:var(--lime); }
+.account-menu{ border-radius:8px; box-shadow:var(--shadow-lg); }
+
+/* buttons: square-ish, lime primary, no glow */
+.btn{ border-radius:8px; box-shadow:none; font-weight:700; border-color:#BDB7A3; }
+.btn:hover:not(:disabled){ border-color:var(--ink); background:var(--tint); }
+.btn-primary{ background:var(--lime); color:var(--ink); border-color:var(--ink); box-shadow:none; }
+.btn-primary:hover:not(:disabled){ background:var(--ink); color:var(--lime); border-color:var(--ink); box-shadow:none; }
+.app-header .btn, .team-hero .btn, .lp-hero .btn, .lp-final .btn{ border-color:rgba(255,255,255,0.45); }
+.app-header .btn-primary, .team-hero .btn-primary, .lp-hero .btn-primary, .lp-final .btn-primary{ border-color:var(--lime); }
+.app-header .btn-primary:hover:not(:disabled), .team-hero .btn-primary:hover:not(:disabled),
+.lp-hero .btn-primary:hover:not(:disabled), .lp-final .btn-primary:hover:not(:disabled){ background:#fff; color:var(--ink); border-color:#fff; }
+.btn-danger{ border-radius:8px; }
+.btn.small{ border-radius:6px; }
+.input{ border-radius:6px; }
+.input:focus{ border-color:var(--ink); }
+.card{ border-radius:10px; }
+
+/* tabs and badges */
+.tab-inline{ border-radius:6px; box-shadow:none; }
+@media (hover:hover){ .tab-inline:hover{ border-color:var(--ink); background:var(--tint); } }
+.tab-inline.active{ background:var(--ink); color:#fff; border-color:var(--ink); box-shadow:none; }
+.badge{ border-radius:5px; }
+.badge-blue{ background:var(--accent-soft); color:var(--accent-text); }
+.avail-chip{ border-radius:5px; }
+
+/* stat tiles: one ink rule, no rainbow */
+.stat-tile, .stat-tile:nth-child(n){ --tile-accent:var(--ink); }
+.stat-tile::before{ height:2px; }
+.stat-value, .rank-badge, .standings-row, .mock-rank{ font-variant-numeric:tabular-nums; }
+
+/* player page: team hero + next-match card + bottom bars */
+.team-hero{ background:var(--ink); box-shadow:none; border-radius:10px; }
+.rank-badge{ color:var(--lime); }
+.progress{ border-radius:3px; }
+.progress > span{ border-radius:3px; background:var(--lime); }
+.next-card{ background:var(--panel); border:2px solid var(--ink); }
+.next-card .next-eyebrow{ color:var(--accent-text); }
+.attention-card{ background:#FBF1D2; border-color:rgba(160,100,10,0.5); }
+.team-nav{ background:var(--panel); backdrop-filter:none; box-shadow:none; border-top:2px solid var(--ink); }
+.team-nav-item{ border-radius:6px; }
+.team-nav-item.active{ color:var(--ink); }
+.team-nav-item.active::before{ background:var(--lime); height:4px; border-radius:0; top:-8px; }
+.nav-dot{ border-color:var(--panel); }
+@media (min-width: 720px){
+    .team-nav{ border:1px solid var(--line); border-radius:8px; background:var(--panel); box-shadow:none; }
+    .team-nav-item{ border-radius:6px; }
+    .team-nav-item.active{ background:var(--ink); color:#fff; }
+    .team-nav-item.active::before{ display:none; }
+}
+@media (max-width: 640px){
+    .league-nav{
+        left:0; right:0; bottom:0; border-radius:0; padding:6px 6px calc(6px + env(safe-area-inset-bottom, 0px));
+        background:var(--panel); -webkit-backdrop-filter:none; backdrop-filter:none;
+        border:0; border-top:2px solid var(--ink); box-shadow:none;
+    }
+    .league-nav-pill{ border-radius:6px; background:var(--lime); box-shadow:none; transition:transform .22s var(--ease); }
+    .league-nav-item{ border-radius:6px; }
+    .league-nav-item.active{ color:var(--ink); }
+    .league-nav-item.active .icon{ animation:none; }
+    .nav-count{ animation:none; border-color:var(--panel); }
+    .more-sheet{ border-radius:12px 12px 0 0; box-shadow:0 -8px 30px rgba(22,21,15,0.25); }
+    #app.with-league-nav{ padding-bottom:calc(84px + env(safe-area-inset-bottom, 0px)); }
+}
+
+/* front page */
+.lp-hero{ background:var(--ink); }
+.lp-hero::before{
+    opacity:1;
+    background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='520' height='320' viewBox='0 0 520 320' fill='none' stroke='%23C6F432' stroke-opacity='0.14' stroke-width='2'%3E%3Crect x='10' y='10' width='500' height='300'/%3E%3Cpath d='M260 10v300M10 160h500M10 85h500M10 235h500'/%3E%3C/svg%3E") no-repeat right -60px center / 760px auto;
+}
+.lp-final{ background:var(--ink); }
+.lp-phone{ border-radius:22px; background:#0C0B07; border:1px solid rgba(255,255,255,0.2); box-shadow:none; }
+.lp-phone-screen{ border-radius:14px 14px 4px 4px; background:var(--panel); }
+.mock-tiles div{ border-radius:5px; }
+.mock-next{ border-radius:6px; background:var(--accent-soft); }
+.mock-next small{ color:var(--accent-text); }
+.mock-btn{ border-radius:6px; background:var(--lime); color:var(--ink); }
+.mock-nav .on{ color:var(--ink); }
+.lp-steps li, .lp-feature, .lp-price-card, .lp-faq details{ border-radius:8px; box-shadow:none; border-color:var(--line); }
+.lp-step-n{ border-radius:4px; background:var(--lime); color:var(--ink); }
+.lp-card-note{ border-radius:8px; }
+.lp-price-card:first-child{ border-color:var(--ink); box-shadow:0 0 0 1px var(--ink); }
+.lp-ticks li::before{
+    border-radius:3px; background:var(--lime) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2316150F' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 12.5 4 4 8-9'/%3E%3C/svg%3E") center / 12px no-repeat;
+}
+.lp-find{ border-radius:8px; }
+
+/* league-wide: hard-coded blue leftovers */
+.scorer-side.team-b{ background:#E8EBEE; border-color:#9AA4AE; color:#2B3640; }
+.club-banner{ border-radius:8px; }
+
+/* polish pass */
+.mock-nav .on{ color:var(--lime); }
+.demo-tag, .demo-view, .demo-bar .btn.small{ border-radius:5px; }
+.demo-bar-top .btn, .demo-bar .btn-primary{ border-radius:6px; }
+.standings-header, .standings-header > *{ background:#EDE9DB; }
+.stat-tile{ border-radius:6px; }
