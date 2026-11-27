@@ -2022,8 +2022,23 @@
     const confirmName = el("input", { class: "input", placeholder: `Type "${league.name}" to confirm` });
     const deleteBtn = el("button", { class: "btn btn-danger", type: "button", disabled: true }, "Delete league permanently");
 
+    // A faint hint of the rest of the name appears behind what's typed. It is
+    // only a hint (nothing is filled in for them), so the delete stays a
+    // deliberate act. It shows only while what's typed matches so far.
+    const ghostRest = el("span", { class: "ghost-rest" });
+    const ghostTyped = el("span", { class: "ghost-typed" });
+    const ghost = el("div", { class: "ghost-text", "aria-hidden": "true" }, [ghostTyped, ghostRest]);
+    const confirmField = el("div", { class: "ghost-field" }, [ghost, confirmName]);
+    function updateGhost() {
+      const typed = confirmName.value;
+      const matches = typed.length > 0 && league.name.startsWith(typed);
+      ghostTyped.textContent = matches ? typed : "";
+      ghostRest.textContent = matches ? league.name.slice(typed.length) : "";
+    }
+
     confirmName.addEventListener("input", () => {
       deleteBtn.disabled = confirmName.value.trim() !== league.name;
+      updateGhost();
     });
 
     deleteBtn.addEventListener("click", async () => {
@@ -2036,7 +2051,7 @@
     return el("div", { class: "card danger-card" }, [
       el("h3", {}, "Delete league"),
       el("p", { class: "muted" }, "Permanently removes this league and every team, fixture, and result in it. This cannot be undone."),
-      confirmName,
+      confirmField,
       deleteBtn
     ]);
   }

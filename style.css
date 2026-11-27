@@ -1512,3 +1512,15 @@ body.has-sidebar .nav-link.active{ box-shadow:none; }
 .demo-bar-top .btn, .demo-bar .btn-primary{ border-radius:6px; }
 .standings-header, .standings-header > *{ background:#EDE9DB; }
 .stat-tile{ border-radius:6px; }
+
+/* "type the name to confirm" box: a faint hint of the rest of the name sits
+   behind what has been typed (admin.js deleteLeagueCard) */
+.ghost-field{ position:relative; background:var(--field); border-radius:var(--radius-sm); margin-bottom:10px; }
+.ghost-field .input{ position:relative; z-index:1; background:transparent; }
+.ghost-text{
+    position:absolute; inset:0; z-index:0; display:flex; align-items:center; overflow:hidden;
+    padding:0 13px; white-space:pre; pointer-events:none;
+    font-family:var(--font-body); font-size:16px; line-height:normal;
+}
+.ghost-typed{ visibility:hidden; }
+.ghost-rest{ color:var(--faint); opacity:0.55; }
